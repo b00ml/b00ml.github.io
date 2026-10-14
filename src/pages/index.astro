@@ -1,0 +1,96 @@
+---
+import { getCollection } from 'astro:content'
+
+import PostPreview from '@/components/pure/PostPreview.astro'
+import { Button } from 'astro-pure/user'
+import PageLayout from '@/layouts/BaseLayout.astro'
+import LinkCard from '@/components/home/LinkCard.astro'
+import Section from '@/components/home/Section.astro'
+import config from '@/site-config'
+
+export const prerender = true
+
+const newestFirst = <T extends { data: { pubDate: Date; draft: boolean } }>(entries: T[]) =>
+  entries
+    .filter((entry) => !entry.data.draft)
+    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
+
+const posts = newestFirst(await getCollection('blog')).slice(0, 5)
+const notes = newestFirst(await getCollection('notes')).slice(0, 5)
+const products = newestFirst(await getCollection('product')).slice(0, 5)
+
+const meta = {
+  title: 'Home',
+  description: config.description
+}
+---
+
+<PageLayout {meta}>
+  <main class='mt-6 flex flex-col gap-y-16 lg:mt-10'>
+    <div id='content-header' class='animate'>
+      <h1 class='mb-4 text-3xl font-medium'>peik1</h1>
+      <p class='max-w-2xl text-muted-foreground'>
+        写 AI Agent、软件工程和产品思考。这里是长文、短记录和产品拆解汇在一起的地方。
+      </p>
+    </div>
+
+    <Section title='Blog' class='animate'>
+      {
+        posts.length > 0 ? (
+          <ul class='flex flex-col gap-y-4 text-start'>
+            {posts.map((post) => (
+              <PostPreview {post} detailed />
+            ))}
+          </ul>
+        ) : (
+          <p class='text-muted-foreground'>还没有文章。</p>
+        )
+      }
+      <Button title='All posts' class='w-fit' href='/blog' style='pill' />
+    </Section>
+
+    <Section title='Notes' class='animate'>
+      {
+        notes.length > 0 ? (
+          <ul class='flex flex-col gap-y-3'>
+            {notes.map((note) => (
+              <li>
+                <LinkCard
+                  href={`/notes/${note.id}`}
+                  heading={note.data.title}
+                  subheading={note.data.description}
+                  target='_self'
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class='text-muted-foreground'>还没有笔记。</p>
+        )
+      }
+      <Button title='All notes' class='w-fit' href='/notes' style='pill' />
+    </Section>
+
+    <Section title='Product' class='animate'>
+      {
+        products.length > 0 ? (
+          <ul class='flex flex-col gap-y-3'>
+            {products.map((entry) => (
+              <li>
+                <LinkCard
+                  href={`/product/${entry.id}`}
+                  heading={entry.data.title}
+                  subheading={entry.data.description}
+                  target='_self'
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class='text-muted-foreground'>还没有产品笔记。</p>
+        )
+      }
+      <Button title='All product notes' class='w-fit' href='/product' style='pill' />
+    </Section>
+  </main>
+</PageLayout>

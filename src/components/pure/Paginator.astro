@@ -1,0 +1,42 @@
+---
+// Vendored from astro-pure's `components/pages/Paginator.astro`.
+//
+// Why a local copy: the published `astro-pure/components/pages` barrel also
+// re-exports `Copyright.astro`, which imports `QRCode` from the
+// `astro-pure/advanced` barrel — and that barrel re-exports `Comment.astro`
+// (Waline). Because a component's client `<script>` counts as a side effect,
+// Rollup cannot drop it, so *any* import from the pages barrel pulls the whole
+// Waline comment stack into the bundle. This site has no comments, so each
+// component we actually use is vendored here verbatim instead.
+type PaginationLink = {
+  url: string
+  text?: string
+  srLabel?: string
+}
+
+interface Props {
+  nextUrl?: PaginationLink
+  prevUrl?: PaginationLink
+}
+
+const { nextUrl, prevUrl } = Astro.props
+---
+
+{
+  (prevUrl || nextUrl) && (
+    <nav class='mt-4 flex items-center gap-x-4 sm:mt-6'>
+      {prevUrl && (
+        <a class='me-auto py-2' data-astro-prefetch href={prevUrl.url}>
+          {prevUrl.srLabel && <span class='sr-only'>{prevUrl.srLabel}</span>}
+          {prevUrl.text ? prevUrl.text : 'Previous'}
+        </a>
+      )}
+      {nextUrl && (
+        <a class='ms-auto py-2' data-astro-prefetch href={nextUrl.url}>
+          {nextUrl.srLabel && <span class='sr-only'>{nextUrl.srLabel}</span>}
+          {nextUrl.text ? nextUrl.text : 'Next'}
+        </a>
+      )}
+    </nav>
+  )
+}

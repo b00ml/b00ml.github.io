@@ -1,0 +1,28 @@
+---
+import { Button } from 'astro-pure/user'
+import PageLayout from '@/layouts/CommonPage.astro'
+
+// Placeholder skeleton: the real copy is written separately from the prune work.
+const headings = [
+  { depth: 2, slug: 'about', text: '关于' },
+  { depth: 2, slug: 'contact', text: '联系' }
+]
+---
+
+<PageLayout title='About' {headings}>
+  <h2 id='about'>关于</h2>
+  <p>
+    这里会写我是谁、在做什么方向、以及这个站点存在的理由。内容待补。
+  </p>
+
+  <h2 id='contact'>联系</h2>
+  <p>
+    最直接的方式是 GitHub：<a href='https://github.com/b00ml' target='_blank'>@b00ml</a>。
+  </p>
+  <Button
+    title='GitHub'
+    class='w-fit'
+    href='https://github.com/b00ml'
+    style='ahead'
+  />
+</PageLayout>

@@ -1,0 +1,20 @@
+---
+export const prerender = true
+import { Button } from 'astro-pure/user'
+import PageLayout from '@/layouts/CommonPage.astro'
+
+const headings = [
+  { depth: 2, slug: 'open-source', text: 'Open Source' },
+  { depth: 2, slug: 'side-projects', text: 'Side Projects' }
+]
+---
+
+<PageLayout title='Projects' {headings}>
+  <h2 id='open-source'>Open Source</h2>
+  <p>开源项目待补。</p>
+
+  <h2 id='side-projects'>Side Projects</h2>
+  <p>自己做的产品与实验待补。</p>
+
+  <Button title='GitHub' class='w-fit' href='https://github.com/b00ml' style='ahead' />
+</PageLayout>

@@ -1,0 +1,124 @@
+---
+import { listingMetadata } from '@/lib/seo/metadata'
+/**
+ * Note Tag Filter Page with Pagination
+ * Shows note entries filtered by tag
+ */
+import type { GetStaticPaths, Page } from 'astro'
+import type { CollectionEntry } from 'astro:content'
+import { getCollection } from 'astro:content'
+
+import Paginator from '@/components/pure/Paginator.astro'
+import { Button, Icon } from 'astro-pure/user'
+import PageLayout from '@/layouts/BaseLayout.astro'
+
+export const prerender = true
+
+export const getStaticPaths: GetStaticPaths = async ({ paginate }) => {
+  const allNotes = (await getCollection('notes')).filter((entry) => !entry.data.draft)
+
+  const uniqueTags = [...new Set(allNotes.flatMap((entry) => entry.data.tags))]
+
+  return uniqueTags.flatMap((tag) => {
+    const filteredEntries = allNotes
+      .filter((entry) => entry.data.tags.includes(tag))
+      .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
+
+    return paginate(filteredEntries, {
+      params: { tag },
+      pageSize: 10
+    })
+  })
+}
+
+interface Props {
+  page: Page<CollectionEntry<'notes'>>
+}
+
+const { page } = Astro.props as unknown as Props
+const { tag } = Astro.params
+
+const meta = listingMetadata(
+  'notes',
+  page.currentPage,
+  page.data.map((entry) => entry.data.title),
+  tag
+)
+
+const paginationProps = {
+  ...(page.url.prev && {
+    prevUrl: {
+      text: '← 上一页',
+      url: page.url.prev
+    }
+  }),
+  ...(page.url.next && {
+    nextUrl: {
+      text: '下一页 →',
+      url: page.url.next
+    }
+  })
+}
+---
+
+<PageLayout {meta}>
+  <Button title='Back' href='/notes' style='back' />
+
+  <main class='mt-6 lg:mt-10'>
+    <div id='content-header' class='animate'>
+      <div class='mb-2 flex items-center gap-2'>
+        <Icon name='tag-2' class='text-muted-foreground' />
+        <h1 class='text-3xl font-medium'>{tag}</h1>
+      </div>
+      <p class='mb-6 text-muted-foreground'>{page.total} 条带此标签的笔记</p>
+    </div>
+
+    <section id='content' class='animate' aria-label='Note entries'>
+      <ul class='space-y-3'>
+        {
+          page.data.map((entry) => (
+            <li class='group relative rounded-lg border border-border bg-card p-4 transition hover:border-foreground/20 hover:shadow-sm'>
+              <a href={`/notes/${entry.id}`} class='block' data-astro-prefetch>
+                <h3 class='mb-1 font-medium leading-tight group-hover:text-foreground'>
+                  {entry.data.title}
+                </h3>
+                {entry.data.description && (
+                  <p class='mb-2 text-sm text-muted-foreground'>{entry.data.description}</p>
+                )}
+                <div class='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+                  <time datetime={entry.data.pubDate.toISOString()}>
+                    {entry.data.pubDate.toLocaleDateString('zh-CN', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </time>
+                  {entry.data.tags.length > 1 && (
+                    <>
+                      <span>·</span>
+                      <div class='flex flex-wrap gap-1'>
+                        {entry.data.tags
+                          .filter((t) => t !== tag)
+                          .map((t) => (
+                            <span class='rounded bg-muted px-1.5 py-0.5'>{t}</span>
+                          ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+
+      {
+        page.lastPage > 1 && (
+          <div class='mt-8'>
+            <Paginator {...paginationProps} />
+          </div>
+        )
+      }
+    </section>
+  </main>
+</PageLayout>
