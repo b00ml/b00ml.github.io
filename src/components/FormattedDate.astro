@@ -19,7 +19,7 @@ const formatted = new Intl.DateTimeFormat('zh-CN', {
 }).format(date)
 ---
 
-<span class={cn('text-muted-foreground font-mono', className)} {...attrs}>
+<span class={cn('text-muted-foreground font-sans', className)} {...attrs}>
   <time datetime={date.toISOString()}>
     {formatted}
   </time>

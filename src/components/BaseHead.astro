@@ -60,28 +60,12 @@ const siteGraph = {
 {/* Icons / Favicon */}
 <link rel='icon' type='image/svg+xml' href='/favicon.svg' />
 
-{/* Font preloads */}
+{/* Font preload. Satoshi is the only webfont: it is self-hosted, so it is the
+    only font request the page makes. The template also pulled JetBrains Mono from
+    Google Fonts; that is gone because fonts.googleapis.com is unreachable from
+    mainland China, which is this site's audience, and because nothing here renders
+    monospace text any more — code blocks use the browser's own mono stack. */}
 <link rel='preload' href='/fonts/Satoshi-Variable.ttf' as='font' type='font/ttf' crossorigin />
-
-{
-  /* JetBrains Mono — code blocks. Loaded without blocking first paint:
-   media=print keeps the stylesheet off the render path, onload flips it on (display=swap
-   already makes the text fall back to system mono until the font arrives). */
-}
-<link rel='preconnect' href='https://fonts.googleapis.com' />
-<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin />
-<link
-  rel='stylesheet'
-  href='https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap'
-  media='print'
-  onload="this.media='all'"
-/>
-<noscript>
-  <link
-    rel='stylesheet'
-    href='https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap'
-  />
-</noscript>
 
 {/* Canonical URL */}
 <link rel='canonical' href={canonicalURL} />
