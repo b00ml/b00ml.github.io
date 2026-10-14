@@ -47,7 +47,7 @@ const readingTime = (): AstroIntegration => ({
 // https://astro.build/config
 export default defineConfig({
   // Top-Level Options
-  site: 'https://peik1.example.com',
+  site: 'https://b00ml.github.io',
   trailingSlash: 'never',
 
   output: 'static',
