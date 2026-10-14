@@ -1,7 +1,5 @@
-﻿<script is:inline>
+<script is:inline>
   (() => {
-    const DARK_COLOR = '#0B0B10'
-    const LIGHT_COLOR = '#FCFCFD'
     const MEDIA_QUERY = '(prefers-color-scheme: dark)'
 
     function getStoredTheme() {
@@ -19,12 +17,23 @@
       return theme
     }
 
+    // The `--background` token is the single source of truth for this colour. The
+    // `.dark` class above already switched it, so reading it beats keeping a second,
+    // hand-maintained pair of hex values in sync with app.css.
+    function syncThemeColor() {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim()
+      if (!raw) return
+      document
+        .querySelectorAll('meta[name="theme-color"]')
+        .forEach((meta) => meta.setAttribute('content', `hsl(${raw})`))
+    }
+
     function applyTheme(theme = getStoredTheme()) {
       const resolvedTheme = resolveTheme(theme)
       document.documentElement.classList.toggle('dark', resolvedTheme === 'dark')
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', resolvedTheme === 'dark' ? DARK_COLOR : LIGHT_COLOR)
+      syncThemeColor()
       return theme ?? 'system'
     }
 
@@ -47,6 +56,12 @@
     }
 
     applyTheme()
+
+    // While the head is still parsing, the blocking stylesheet isn't applied yet, so
+    // the token read above can come back empty. Re-sync once it is.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', syncThemeColor, { once: true })
+    }
 
     if (!window.__peik1ThemeChangeListenerBound) {
       const mediaQuery = window.matchMedia(MEDIA_QUERY)

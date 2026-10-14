@@ -92,9 +92,13 @@ const siteGraph = {
 <meta content={config.author} name='author' />
 <meta content={noindex ? 'noindex, follow' : 'index, follow'} name='robots' />
 
-{/* Theme Color */}
-<meta content='hsl(210 33% 99%)' media='(prefers-color-scheme: light)' name='theme-color' />
-<meta content='hsl(240 20.54% 5.2%)' media='(prefers-color-scheme: dark)' name='theme-color' />
+{/* Theme Color — a single meta, with no `media`. The site theme is a user choice
+    kept in localStorage, while a `media` attribute is matched against the OS
+    preference; scoping the metas that way meant a forced light theme left the
+    browser chrome dark. The inline script in ThemeProvider replaces this value
+    with the live `--background` token once the stylesheet is applied, so this
+    literal only has to be right for the no-JS case (which is always light). */}
+<meta content='hsl(210 33% 99%)' name='theme-color' />
 
 {/* Open Graph / Facebook */}
 <meta content={articleDate ? 'article' : 'website'} property='og:type' />
