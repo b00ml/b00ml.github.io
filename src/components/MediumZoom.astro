@@ -8,8 +8,13 @@
  * scope for this site.
  *
  * https://github.com/francoischalifour/medium-zoom
+ *
+ * The library itself is vendored at `public/vendor/medium-zoom.min.umd.js`
+ * (v1.1.0, MIT, banner kept) instead of being pulled from `theme.npmCDN`: it was
+ * the only third-party request the site made, and jsdelivr is slow to reach from
+ * mainland China, which is where this site's readers are.
  */
-import { integ, theme } from '@/site-config'
+import { integ } from '@/site-config'
 
 interface Props {
   selector?: string
@@ -22,7 +27,7 @@ const {
 } = Astro.props
 ---
 
-<script is:inline src={`${theme.npmCDN}/medium-zoom/dist/pure/medium-zoom.min.umd.js`}></script>
+<script is:inline src='/vendor/medium-zoom.min.umd.js'></script>
 <script is:inline define:vars={{ selector, background }}>
   mediumZoom(selector, { background })
 </script>
