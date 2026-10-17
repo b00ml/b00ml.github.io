@@ -1,24 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { parseFrontmatter } from '@astrojs/markdown-remark'
-
+import { findEntryFile, readFrontmatter } from '../content/entries'
 import { contentLastModified } from './lastmod'
-
-/**
- * Route prefix to content collection directory. A content entry's `id` is its
- * path under the collection base with the extension stripped, so the URL after
- * the prefix is the file name — `/blog/20261014-sample-post` is
- * `src/content/blog/20261014-sample-post.md`.
- */
-const CONTENT_ROUTES: Record<string, string> = {
-  blog: 'src/content/blog',
-  notes: 'src/content/notes',
-  product: 'src/content/product'
-}
-
-function findEntryFile(dir: string, id: string): string | undefined {
-  return ['md', 'mdx'].map((ext) => resolve(dir, `${id}.${ext}`)).find(existsSync)
-}
 
 /**
  * Last-modified time for a page in the sitemap, or `undefined` when it cannot
@@ -31,27 +12,21 @@ function findEntryFile(dir: string, id: string): string | undefined {
  * list would be a different fact than "this page changed".
  */
 export function sitemapLastModified(pathname: string): string | undefined {
-  const [prefix, ...rest] = pathname.replace(/^\//, '').split('/')
-  const dir = CONTENT_ROUTES[prefix]
-  const id = rest.join('/')
-  if (!dir || !id) return undefined
-
-  // URL paths arrive percent-encoded for non-ASCII slugs; the file is named in
-  // the decoded form.
-  let file = findEntryFile(dir, id)
-  if (!file) {
-    try {
-      file = findEntryFile(dir, decodeURIComponent(id))
-    } catch {
-      return undefined
-    }
-  }
+  const [collection, ...rest] = pathname.replace(/^\//, '').split('/')
+  const file = findEntryFile(collection, rest.join('/'))
   if (!file) return undefined
 
-  const { frontmatter } = parseFrontmatter(readFileSync(file, 'utf8'))
-  const published = new Date(frontmatter.pubDate)
-  if (!Number.isFinite(published.getTime())) return undefined
-  const declared = frontmatter.updatedDate ? new Date(frontmatter.updatedDate) : undefined
+  const frontmatter = readFrontmatter(file)
+  const published = toDate(frontmatter.pubDate)
+  if (!published) return undefined
 
-  return contentLastModified(file, published, declared)
+  return contentLastModified(file, published, toDate(frontmatter.updatedDate))
+}
+
+/** A frontmatter date as parsed, or `undefined` when it is not a valid date. */
+function toDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : undefined
+  if (typeof value !== 'string') return undefined
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date : undefined
 }
