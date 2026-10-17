@@ -25,6 +25,9 @@ const SIZE = /^\d+(?:x\d+)?$/
 /** 有 scheme 的地址不是本地文件；只有 http(s) 算远程图片，`data:` 之类原样保留。 */
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/
 
+/** 与 src/pages/rss.xml.ts 的图片 glob 一致：只有这些扩展名会被站点当图片处理。 */
+const IMAGE_EXTENSIONS = ['avif', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']
+
 export type ImagePlan = {
   body: string
   images: PlannedImage[]
@@ -172,24 +175,53 @@ function altText(pipe: string | undefined, ref: string): string {
 /**
  * 附件可能的位置，按 Obsidian 的解析习惯排：笔记旁 → 笔记旁的 attachments/ → 笔记库根目录。
  * 以 `/` 开头的引用在 Obsidian 里相对笔记库根目录，所以只查根目录。找不到库根就退回笔记旁。
+ *
+ * 计划里的 `from` 会被下一条命令原样复制进 `src/assets/`，所以候选位置必须先过两道网：
+ * 解析之后仍落在笔记库内（没有库时是笔记所在目录），且扩展名是图片。`..` 和盘符可以把
+ * 任意可读文件指到仓库外，一旦进了 `src/assets/`，下一次推送就会把它带上公开仓库。
  */
 function attachmentCandidates(
   ref: string,
   noteDir: string,
   exists: (path: string) => boolean
 ): string[] {
+  const vault = vaultRoot(noteDir, exists)
+  const root = vault ?? noteDir
+  let raw: string[]
   // 真正的绝对路径：Windows 盘符或 UNC。注意 win32 的 isAbsolute 也认 `/foo`，
   // 而在 Obsidian 里那是相对笔记库根目录的写法，所以先判掉这两种。
-  if (/^[\\/]{2}/.test(ref) || /^[A-Za-z]:[\\/]/.test(ref)) return [ref]
-  const relative = ref.replace(/^[\\/]+/, '')
-  if (/^[\\/]/.test(ref)) {
-    const root = vaultRoot(noteDir, exists)
-    return [join(root ?? noteDir, relative)]
+  if (/^[\\/]{2}/.test(ref) || /^[A-Za-z]:[\\/]/.test(ref)) {
+    raw = [ref]
+  } else {
+    const relative = ref.replace(/^[\\/]+/, '')
+    if (/^[\\/]/.test(ref)) {
+      raw = [join(root, relative)]
+    } else {
+      raw = [join(noteDir, relative), join(noteDir, 'attachments', relative)]
+      if (vault !== undefined) raw.push(join(vault, relative))
+    }
   }
-  const candidates = [join(noteDir, relative), join(noteDir, 'attachments', relative)]
-  const root = vaultRoot(noteDir, exists)
-  if (root !== undefined) candidates.push(join(root, relative))
-  return candidates
+
+  const candidates = raw.map((path) => resolve(path))
+  // 先看引用本身解析到哪：`..` 或盘符一旦把主位置指到根目录外就整条拒绝，
+  // 不能靠 attachments/ 之类的兜底候选把它「救」回库内。
+  if (!isInside(candidates[0], root)) {
+    throw new Error(
+      `附件越出了${vault === undefined ? '笔记所在目录' : '笔记库'}：${ref}` +
+        `（解析为 ${candidates[0]}，根目录是 ${root}）；` +
+        '只接受该目录内的图片，请把附件放进笔记库再重新运行。'
+    )
+  }
+
+  const inside = candidates.filter((path) => isInside(path, root))
+  const [path] = inside
+  if (!IMAGE_EXTENSIONS.includes(extname(path).slice(1).toLowerCase())) {
+    throw new Error(
+      `附件不是图片：${ref}（解析为 ${path}）；只接受图片扩展名：` +
+        `${IMAGE_EXTENSIONS.map((ext) => `.${ext}`).join('、')}。`
+    )
+  }
+  return inside
 }
 
 /** 从笔记目录往上找带 `.obsidian` 的目录；找不到就说明这不是 Obsidian 库的路径。 */
@@ -201,6 +233,21 @@ function vaultRoot(from: string, exists: (path: string) => boolean): string | un
     if (parent === dir) return undefined
     dir = parent
   }
+}
+
+/**
+ * 先解析再比前缀，`..` 和分隔符都由 `resolve` 归一。只把盘符改成小写（Windows 的盘符
+ * 不区分大小写），其余保持原样；末尾补 `/` 再比，避免 `C:\a\b` 被 `C:\a\bc` 骗过。
+ */
+function isInside(path: string, root: string): boolean {
+  const normalise = (value: string): string =>
+    resolve(value)
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '')
+      .replace(/^([A-Za-z]):/, (_, drive: string) => `${drive.toLowerCase()}:`)
+  const child = normalise(path)
+  const parent = normalise(root)
+  return child === parent || child.startsWith(`${parent}/`)
 }
 
 /** Obsidian 可能写百分号编码的路径；解不开就按原文处理。 */

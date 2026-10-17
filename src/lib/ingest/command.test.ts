@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { CONTENT_DIRS } from '../content/entries'
 import { runIngest, type IngestDeps } from './command'
@@ -787,6 +787,22 @@ test('a missing attachment is a usage error and writes nothing', () => {
   expect(h.output().error.message).toContain('找不到附件：gone.webp')
   expect(h.writes).toEqual([])
   expect(h.stdout.length).toBe(1)
+})
+
+test('an attachment outside the note tree is refused and copies nothing', () => {
+  const outside = resolve('E:/outside/creds.txt')
+  const h = harness({
+    note: noteWithImage('正文。\n\n![creds](../../outside/creds.txt)\n'),
+    files: { [outside]: Buffer.from('OPENAI_API_KEY=sk-test') }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.step).toBe('usage')
+  expect(h.output().error.message).toContain('../../outside/creds.txt')
+  expect(h.copied).toEqual([])
+  expect(h.writes).toEqual([])
 })
 
 test('--apply leaves remote images alone and records them as remote', () => {

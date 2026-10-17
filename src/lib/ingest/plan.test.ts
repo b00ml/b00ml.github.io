@@ -860,3 +860,127 @@ test('images are rewritten before the H1 is removed', () => {
 
   expect(plan.body.preview).toBe('![pic](../../assets/pic.png)')
 })
+
+/** Obsidian 库：笔记在 E:/vault/notes/，库根是 E:/vault（带 .obsidian）。 */
+const VAULT_NOTE = 'E:/vault/notes/note.md'
+const VAULT_ROOT = beside(VAULT_NOTE, '..')
+const VAULT_DIR = join(VAULT_ROOT, '.obsidian')
+
+const SECRET = Buffer.from('OPENAI_API_KEY=sk-test')
+
+/** 取计划抛出的错误信息，用来断言它点出了哪个引用、哪个根目录。 */
+function planError(content: Buffer, options: Parameters<typeof planFor>[1]): string {
+  try {
+    planFor(content, options)
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+  throw new Error('计划本应拒绝这个附件，但它通过了')
+}
+
+test('a relative .. attachment that escapes the vault is refused', () => {
+  const message = planError(imageNote('正文。\n\n![creds](../../outside/creds.txt)\n'), {
+    path: VAULT_NOTE,
+    files: { [resolve('E:/outside/creds.txt')]: SECRET },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(message).toContain('越出')
+  expect(message).toContain('../../outside/creds.txt')
+  expect(message).toContain(VAULT_ROOT)
+})
+
+test('a wikilink attachment that escapes the vault is refused', () => {
+  const message = planError(imageNote('正文。\n\n![[../../outside/creds.txt]]\n'), {
+    path: VAULT_NOTE,
+    files: { [resolve('E:/outside/creds.txt')]: SECRET },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(message).toContain('越出')
+  expect(message).toContain('../../outside/creds.txt')
+  expect(message).toContain(VAULT_ROOT)
+})
+
+test('an absolute attachment outside the vault is refused', () => {
+  const message = planError(imageNote('正文。\n\n![[E:/outside/creds.txt]]\n'), {
+    path: VAULT_NOTE,
+    files: { [resolve('E:/outside/creds.txt')]: SECRET },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(message).toContain('越出')
+  expect(message).toContain('E:/outside/creds.txt')
+  expect(message).toContain(VAULT_ROOT)
+})
+
+test('a non-image attachment is refused even when it sits inside the vault', () => {
+  const message = planError(imageNote('正文。\n\n![[secrets.txt]]\n'), {
+    path: VAULT_NOTE,
+    files: { [beside(VAULT_NOTE, 'secrets.txt')]: SECRET },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(message).toContain('不是图片')
+  expect(message).toContain('secrets.txt')
+  expect(message).toContain('.png')
+})
+
+test('an extensionless attachment is refused', () => {
+  const message = planError(imageNote('正文。\n\n![[secrets]]\n'), {
+    path: VAULT_NOTE,
+    files: { [beside(VAULT_NOTE, 'secrets')]: SECRET },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(message).toContain('不是图片')
+  expect(message).toContain('secrets')
+})
+
+test('a sibling ../x.png inside the vault still resolves', () => {
+  const file = beside(VAULT_NOTE, '..', 'x.png')
+  const plan = planFor(imageNote('![x](../x.png)\n'), {
+    path: VAULT_NOTE,
+    files: { [file]: IMAGE },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(plan.body.preview).toBe('![x](../../assets/x.png)')
+  expect(plan.images[0].from).toBe(file)
+})
+
+test('a vault-root wikilink still resolves', () => {
+  const file = beside(VAULT_NOTE, '..', 'x.png')
+  const plan = planFor(imageNote('![[x.png]]\n'), {
+    path: VAULT_NOTE,
+    files: { [file]: IMAGE },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(plan.images[0].from).toBe(file)
+  expect(plan.body.preview).toBe('![x](../../assets/x.png)')
+})
+
+test('an absolute path inside the vault still resolves', () => {
+  const file = beside(VAULT_NOTE, '..', 'x.png')
+  const ref = file.replace(/\\/g, '/')
+  const plan = planFor(imageNote(`![[${ref}]]\n`), {
+    path: VAULT_NOTE,
+    files: { [file]: IMAGE },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(plan.images[0].from).toBe(file)
+  expect(plan.body.preview).toBe('![x](../../assets/x.png)')
+})
+
+test('containment ignores the case of the drive letter', () => {
+  const ref = beside(VAULT_NOTE, '..', 'x.png').replace(/^E:/, 'e:').replace(/\\/g, '/')
+  const plan = planFor(imageNote(`![[${ref}]]\n`), {
+    path: VAULT_NOTE,
+    files: { [resolve(ref)]: IMAGE },
+    dirs: [VAULT_DIR]
+  })
+
+  expect(plan.images[0].from).toBe(resolve(ref))
+})
