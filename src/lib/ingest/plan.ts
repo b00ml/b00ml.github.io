@@ -379,14 +379,50 @@ function filenameTitle(path: string): string {
 }
 
 /**
+ * 围栏代码块的行：``` 或 ~~~ 起头，最多三格缩进，信息串跟在标记后面，
+ * 闭合围栏用的是同一种字符且不短于开始围栏；没有闭合就吃到文末。
+ * 围栏里的 `#` 是代码或注释，不是标题。
+ */
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/
+
+function fencedLines(lines: string[]): boolean[] {
+  const fenced = lines.map(() => false)
+  let open: { marker: string; length: number } | null = null
+  lines.forEach((line, index) => {
+    const match = FENCE.exec(line)
+    if (open === null) {
+      // 反引号围栏的信息串里不能再出现反引号，否则整行是普通文本。
+      if (match === null || (match[1][0] === '`' && match[2].includes('`'))) return
+      open = { marker: match[1][0], length: match[1].length }
+      fenced[index] = true
+      return
+    }
+    fenced[index] = true
+    if (
+      match !== null &&
+      match[1][0] === open.marker &&
+      match[1].length >= open.length &&
+      match[2].trim() === ''
+    ) {
+      open = null
+    }
+  })
+  return fenced
+}
+
+/**
  * 正文第一个 H1 的文本，以及删掉它之后的正文。删除是默认动作：页面布局已经把 title
  * 渲染成 h1，正文再留一个就是两个 h1，目录里也会多一个孤零零的根节点。
  * 删完把接缝处的空行收拾干净——两侧都有空行只留一个，两侧都没有就补一个，
  * 免得把标题前后的两个块粘成一段；正文首尾的空行一并去掉。
+ * 代码块里的 `#` 不算 H1，四格缩进的代码行也匹配不到行首的 `#`。
  */
 function splitH1(body: string): { found: boolean; text: string | null; without: string } {
   const lines = body.split('\n')
-  const index = lines.findIndex((line) => /^#[ \t]+(.+?)[ \t]*$/.test(line))
+  const fenced = fencedLines(lines)
+  const index = lines.findIndex(
+    (line, at) => !fenced[at] && /^#[ \t]+(.+?)[ \t]*$/.test(line)
+  )
   if (index === -1) return { found: false, text: null, without: body }
   const match = /^#[ \t]+(.+?)[ \t]*$/.exec(lines[index])
   if (match === null || match[1].trim() === '') {

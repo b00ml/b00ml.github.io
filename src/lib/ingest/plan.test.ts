@@ -604,6 +604,86 @@ test('the body preview is the body that apply would write, with the H1 removed',
   expect(plan.body.preview).toBe('正文。')
 })
 
+test('a # line inside a leading bash fence is not the H1', () => {
+  const plan = planFor(Buffer.from('```bash\n# 安装依赖\n```\n\n正文。\n'))
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.fields.title).toEqual({ value: 'source', source: 'filename' })
+  expect(plan.body.preview).toBe('```bash\n# 安装依赖\n```\n\n正文。')
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'no-h1',
+    'missing-description'
+  ])
+})
+
+test('an H1 after a fence is still found, and the fence is left alone', () => {
+  const plan = planFor(
+    note(`title: '标题'\ncreated: 2026-10-17`, '```bash\n# 安装依赖\n```\n\n# 标题\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: true, text: '标题', equivalentToTitle: true })
+  expect(plan.body.preview).toBe('```bash\n# 安装依赖\n```\n\n正文。')
+})
+
+test('a tilde fence hides its # lines too', () => {
+  const plan = planFor(
+    note(`title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`, '~~~\n# 注释\n~~~\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('~~~\n# 注释\n~~~\n\n正文。')
+})
+
+test('a real H1 before a fence is found and the fence stays in the body', () => {
+  const plan = planFor(
+    note(`title: 'T'\ncreated: 2026-10-17`, '# T\n\n```bash\n# 安装依赖\n```\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: true, text: 'T', equivalentToTitle: true })
+  expect(plan.body.preview).toBe('```bash\n# 安装依赖\n```\n\n正文。')
+})
+
+test('a four-space indented # line is code, not an H1', () => {
+  const plan = planFor(
+    note(`title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`, '    # 注释\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('    # 注释\n\n正文。')
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
+test('a fence may start with up to three spaces of indentation', () => {
+  const plan = planFor(
+    note(`title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`, '  ```\n# 注释\n   ```\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('  ```\n# 注释\n   ```\n\n正文。')
+})
+
+test('an unterminated fence hides the rest of the document', () => {
+  const plan = planFor(
+    note(`title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`, '```bash\n# 安装依赖\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('```bash\n# 安装依赖\n\n正文。')
+})
+
+test('a shorter run of backticks does not close the fence', () => {
+  const plan = planFor(
+    note(
+      `title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`,
+      '````\n# 注释\n```\n# 标题\n````\n\n正文。\n'
+    )
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('````\n# 注释\n```\n# 标题\n````\n\n正文。')
+})
+
 test('renderArticle writes single-quoted frontmatter, escapes quotes and keeps the body', () => {
   const plan = planFor(
     note(
