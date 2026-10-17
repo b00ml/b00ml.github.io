@@ -7,6 +7,8 @@ import { sha256 } from './plan'
 
 const SOURCE = 'E:/notes/ticket.md'
 const TARGET = 'src/content/blog/20261017-a-test-note.md'
+/** 文章先写进这个临时文件再改名：它不是 .md/.mdx，内容集合不会把它当成文章。 */
+const TEMP = `${TARGET}.ingest-tmp`
 const NOTE = `---
 title: 'a-test-note'
 description: '测试用的描述'
@@ -41,6 +43,10 @@ type Options = {
   files?: Record<string, Buffer>
   /** 第二次读这个附件时换成这些字节，用来模拟计划之后附件被改。 */
   changed?: { path: string; bytes: Buffer }
+  /** 写文章时先落一部分字节再抛错，模拟写到一半被杀或磁盘写满。 */
+  writeFailure?: boolean
+  /** 写文章成功但读回的内容被改动，用来模拟写盘与读回不一致。 */
+  corruptWrite?: boolean
 }
 
 /** 词表扫描时读到的那篇站内文章；读它不计入源笔记的读取次数。 */
@@ -51,9 +57,13 @@ function harness(options: Options = {}) {
   const stderr: string[] = []
   const writes: { path: string; text: string }[] = []
   const copied: { path: string; bytes: Buffer }[] = []
+  const renames: { from: string; to: string }[] = []
+  const removed: string[] = []
   const reads: string[] = []
   const gitCalls: string[][] = []
   const files = new Map<string, Buffer>(Object.entries(options.files ?? {}))
+  /** 本进程写出去的内容：读回时优先看到它，就像真实磁盘一样。 */
+  const written = new Map<string, Buffer>()
   const existingArticles = options.existingArticles ?? {}
   const counts = new Map<string, number>()
   const tags = options.vocabulary ?? ['测试']
@@ -68,6 +78,7 @@ function harness(options: Options = {}) {
     read: (path) => {
       const normalized = path.replace(/\\/g, '/')
       if (normalized === CORPUS_ARTICLE) return Buffer.from(corpus)
+      if (written.has(path)) return written.get(path) ?? Buffer.alloc(0)
       if (Object.hasOwn(existingArticles, normalized)) {
         return Buffer.from(existingArticles[normalized] ?? '')
       }
@@ -83,8 +94,28 @@ function harness(options: Options = {}) {
       if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
       return bytes
     },
-    exists: (path) => files.has(path) || Object.hasOwn(existingArticles, path),
-    writeFile: (path, text) => writes.push({ path, text }),
+    exists: (path) => files.has(path) || written.has(path) || Object.hasOwn(existingArticles, path),
+    writeFile: (path, text) => {
+      writes.push({ path, text })
+      if (options.writeFailure) {
+        written.set(path, Buffer.from(text.slice(0, 8), 'utf8'))
+        throw new Error('ENOSPC: no space left on device')
+      }
+      written.set(path, Buffer.from(options.corruptWrite ? `${text}截断` : text, 'utf8'))
+    },
+    rename: (from, to) => {
+      renames.push({ from, to })
+      const bytes = written.get(from) ?? files.get(from)
+      if (bytes === undefined) throw new Error(`ENOENT: ${from}`)
+      written.delete(from)
+      files.delete(from)
+      written.set(to, bytes)
+    },
+    remove: (path) => {
+      removed.push(path)
+      written.delete(path)
+      files.delete(path)
+    },
     writeBytes: (path, bytes) => {
       copied.push({ path, bytes })
       files.set(path, bytes)
@@ -104,10 +135,17 @@ function harness(options: Options = {}) {
   return {
     writes,
     copied,
+    renames,
+    removed,
     reads,
     gitCalls,
     stdout,
     stderr,
+    /** 读回磁盘上当前的正文；更新用例用它确认上一版文章有没有被动过。 */
+    content: (path: string) =>
+      written.get(path)?.toString('utf8') ??
+      files.get(path)?.toString('utf8') ??
+      existingArticles[path],
     run: (argv: string[]) => runIngest(argv, deps),
     output: () => JSON.parse(stdout.join(''))
   }
@@ -330,7 +368,7 @@ test('--slug overrides a Chinese title so apply writes the English slug', () => 
 
   expect(code).toBe(0)
   expect(h.writes.length).toBe(1)
-  expect(h.writes[0].path).toBe('src/content/blog/20261017-ticket-note.md')
+  expect(h.writes[0].path).toBe('src/content/blog/20261017-ticket-note.md.ingest-tmp')
   expect(h.output().result).toEqual({ targetPath: 'src/content/blog/20261017-ticket-note.md' })
 })
 
@@ -500,7 +538,7 @@ test('apply writes the frontmatter and the body with the H1 removed', () => {
   expect(code).toBe(0)
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
-  expect(write.path).toBe(TARGET)
+  expect(write.path).toBe(TEMP)
   expect(write.text.startsWith(`---\ntitle: 'a-test-note'\n`)).toBe(true)
   expect(write.text).toContain(`pubDate: 2026-10-17`)
   expect(write.text).toContain(`tags: ['测试']`)
@@ -518,7 +556,7 @@ test('apply writes fallback fields and drops the body H1 that became the title',
   expect(code).toBe(0)
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
-  expect(write.path).toMatch(/^src\/content\/blog\/\d{8}-a-draft-post\.md$/)
+  expect(write.path).toMatch(/^src\/content\/blog\/\d{8}-a-draft-post\.md\.ingest-tmp$/)
   expect(write.text).toMatch(
     /^---\ntitle: 'a-draft-post'\ndescription: '兜底写的摘要'\npubDate: \d{4}-\d{2}-\d{2}\n---\n\n/
   )
@@ -584,12 +622,53 @@ test('--apply overwrites an existing article and reports an update', () => {
   expect(code).toBe(0)
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
-  expect(write.path).toBe(TARGET)
+  expect(write.path).toBe(TEMP)
   expect(write.text).not.toContain('旧正文。')
   expect(write.text.endsWith('\n正文。\n')).toBe(true)
   expect(h.output().status).toBe('ingested')
   expect(h.output().plan.article.mode).toBe('update')
   expect(h.stderr.join('')).toContain(`已更新：${TARGET}`)
+})
+
+test('apply writes the article to a temp sibling, renames it and verifies the bytes', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.map((write) => write.path)).toEqual([TEMP])
+  expect(h.renames).toEqual([{ from: TEMP, to: TARGET }])
+  expect(h.removed).toEqual([])
+  expect(h.content(TEMP)).toBeUndefined()
+  expect(h.content(TARGET)).toBe(h.writes[0].text)
+  expect(h.content(TARGET)?.startsWith(`---\ntitle: 'a-test-note'\n`)).toBe(true)
+})
+
+test('a write that fails partway leaves the previous article intact', () => {
+  const h = harness({ existingArticles: { [TARGET]: EXISTING_ARTICLE }, writeFailure: true })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.step).toBe('workspace')
+  expect(h.output().error.message).toContain('ENOSPC')
+  expect(h.content(TARGET)).toBe(EXISTING_ARTICLE)
+  expect(h.content(TEMP)).toBeUndefined()
+  expect(h.renames).toEqual([])
+  expect(h.removed).toEqual([TEMP])
+})
+
+test('a write whose read-back differs fails before the article is renamed into place', () => {
+  const h = harness({ existingArticles: { [TARGET]: EXISTING_ARTICLE }, corruptWrite: true })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.step).toBe('workspace')
+  expect(h.output().error.message).toContain('读回')
+  expect(h.content(TARGET)).toBe(EXISTING_ARTICLE)
+  expect(h.content(TEMP)).toBeUndefined()
+  expect(h.renames).toEqual([])
 })
 
 test('an update excludes the replaced article from the tag vocabulary', () => {
@@ -706,7 +785,7 @@ test('--apply copies local attachments and writes ../../assets references', () =
   expect(h.copied).toEqual([{ path: 'src/assets/demo.webp', bytes: ASSET }])
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
-  expect(write.path).toBe(TARGET)
+  expect(write.path).toBe(TEMP)
   expect(write.text).toContain('![demo](../../assets/demo.webp)')
   expect(write.text).not.toContain('![[')
   expect(h.output().plan.images).toEqual([

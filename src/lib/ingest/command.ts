@@ -13,6 +13,10 @@ export type IngestDeps = {
   writeFile: (path: string, text: string) => void
   /** 写二进制：图片附件按字节复制，不能走文本写盘（编码会改字节）。 */
   writeBytes: (path: string, bytes: Buffer) => void
+  /** 改名：文章先写临时文件，校验通过后再原子地换到位。 */
+  rename: (from: string, to: string) => void
+  /** 删除写坏的临时文件；目标文章本身永远不走这里。 */
+  remove: (path: string) => void
   write: (stream: 'stdout' | 'stderr', text: string) => void
   /** 站内已有文章路径，用来汇总标签词表；更新时命令层会剔除被覆盖的那一篇。 */
   articles: () => string[]
@@ -190,7 +194,71 @@ function applyPlan(sourcePath: string, plan: IngestPlan, deps: IngestDeps): void
   // 先落图片再写文章：图片缺失会让构建直接报 image-not-found，宁可留下无人引用的
   // 附件（清理起来是一目了然的），也不要写出一个引用了不存在图片的文章。
   copyImages(plan, deps)
-  deps.writeFile(plan.article.targetPath, renderArticle(plan.fields, plan.body.preview))
+  writeArticle(plan, deps)
+}
+
+/** 临时文件的后缀：不是 .md/.mdx，内容集合扫描与构建都不会把它当成文章。 */
+const TEMP_SUFFIX = '.ingest-tmp'
+
+/**
+ * 文章先写进同目录的临时文件，核对字节后再改名到位。目标是 src/content/ 下的正式文章，
+ * 直接截断重写时一次崩溃或磁盘写满就会留下半篇正文，而下一次 publish --apply 会照常
+ * 提交它。临时文件与目标同目录，改名因此是原子的；失败时把它删掉，上一版文章原样保留。
+ */
+function writeArticle(plan: IngestPlan, deps: IngestDeps): void {
+  const target = plan.article.targetPath
+  const temp = `${target}${TEMP_SUFFIX}`
+  const text = renderArticle(plan.fields, plan.body.preview)
+  try {
+    try {
+      deps.writeFile(temp, text)
+    } catch (error) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `写入文章失败：${target}（${messageOf(error)}）；请检查磁盘空间与写入权限后重跑。`
+      )
+    }
+    assertWritten(temp, text, deps)
+    deps.rename(temp, target)
+  } catch (error) {
+    discard(temp, deps)
+    throw error
+  }
+  // 改名之后再核对真正会进仓库的那份文件。
+  assertWritten(target, text, deps)
+}
+
+/** 读回来比对字节与哈希：写盘短了、编码变了，都在这里中止。 */
+function assertWritten(path: string, text: string, deps: IngestDeps): void {
+  const expected = Buffer.from(text, 'utf8')
+  let written: Buffer
+  try {
+    written = deps.read(path)
+  } catch (error) {
+    throw new StepFailure(
+      'workspace',
+      EXIT.workspace,
+      `写入后读不回文章：${path}（${messageOf(error)}）；请检查磁盘与权限后重跑。`
+    )
+  }
+  if (written.byteLength !== expected.byteLength || sha256(written) !== sha256(expected)) {
+    throw new StepFailure(
+      'workspace',
+      EXIT.workspace,
+      `写入后读回的内容与计划不一致：${path}；请检查磁盘空间与权限后重跑。`
+    )
+  }
+}
+
+/** 清理写坏的临时文件；清理本身失败也不影响上一版文章，下一次运行会覆盖它。 */
+function discard(path: string, deps: IngestDeps): void {
+  if (!deps.exists(path)) return
+  try {
+    deps.remove(path)
+  } catch {
+    // 残留的临时文件不以 .md/.mdx 结尾，不会被当成文章发布。
+  }
 }
 
 /**

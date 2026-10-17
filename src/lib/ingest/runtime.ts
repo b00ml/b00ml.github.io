@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { CONTENT_DIRS, findEntryFile } from '../content/entries.ts'
@@ -16,6 +16,8 @@ export function createDeps(): IngestDeps {
     exists: (path) => existsSync(path),
     writeFile: (path, text) => writeFileSync(path, text, 'utf8'),
     writeBytes: (path, bytes) => writeFileSync(path, bytes),
+    rename: (from, to) => renameSync(from, to),
+    remove: (path) => rmSync(path, { force: true }),
     write: (stream, text) => {
       ;(stream === 'stdout' ? process.stdout : process.stderr).write(text)
     },
