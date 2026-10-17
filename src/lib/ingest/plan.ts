@@ -3,6 +3,7 @@ import { parseFrontmatter } from '@astrojs/markdown-remark'
 
 import { CONTENT_DIRS, type ContentCollection } from '../content/entries.ts'
 import { commitMessage } from '../publish/plan.ts'
+import { unifiedDiff } from './diff.ts'
 import { planImages } from './images.ts'
 
 /** 每个字段值的来源。词表是外部契约，测试和读计划的人都按它断言。 */
@@ -57,6 +58,8 @@ export type PlannedImage = {
 export type PlannedBody = {
   h1: { found: boolean; text: string | null; equivalentToTitle: boolean }
   preview: string
+  /** 仅在目标文章已存在时出现：磁盘正文与覆盖后正文的 unified diff；无差异是空串。 */
+  diff?: string
 }
 
 export type IngestPlan = {
@@ -66,6 +69,8 @@ export type IngestPlan = {
     slug: string
     targetPath: string
     exists: boolean
+    /** 仅当目标文章已存在时出现：这次是覆盖更新，不是新建。 */
+    mode?: 'update'
   }
   fields: {
     title: PlannedField<string>
@@ -110,6 +115,8 @@ export function readNote(content: Buffer): Note {
  * 正文引用改成 `../../assets/<name>.<ext>`；远程图片保持原地址只出告警。
  * 标签先按内容 schema 的规则小写去重，再与站内词表比对：已有标签标 existing，
  * 其余标 new 并逐个告警——新标签是合法的，但每个都会生成一个新的标签页，得让人看见。
+ * 目标文章已存在时（findEntry 按 slug 命中），计划标成更新并附上「磁盘正文 → 覆盖后正文」
+ * 的行级 diff；`--apply` 会覆盖那篇文章，diff 让人在覆盖前看见自己将要覆盖什么。
  */
 export function buildIngestPlan(input: {
   path: string
@@ -119,8 +126,16 @@ export function buildIngestPlan(input: {
   slug?: string
   /** 调用方给的一句摘要，覆盖源笔记的 description；摘要措辞是判断，工具不生成。 */
   description?: string
-  /** 站内已有标签（大小写不敏感），由命令层扫描现有文章汇总；测试注入固定词表。 */
-  vocabulary: readonly string[]
+  /**
+   * 站内已有标签（大小写不敏感）。数组是固定词表（测试用）；函数按目标路径定制，
+   * 命令层用它把「被覆盖的那篇文章」从扫描结果里排除，免得最后一个 X 标签被自己顶掉。
+   */
+  vocabulary: readonly string[] | ((targetPath: string) => readonly string[])
+  /**
+   * 按集合与 slug 找已有文章，返回其相对路径；与站内路由共用 findEntryFile。
+   * 命中即本次是更新：计划带 mode 与正文 diff，`--apply` 覆盖它。
+   */
+  findEntry: (collection: ContentCollection, slug: string) => string | undefined
   /** 目标文章是否已存在，由调用方提供（命令层读文件系统，测试用假实现）。 */
   exists: (targetPath: string) => boolean
   /** 读文件字节：解析附件、算哈希都用它；命令层读文件系统，测试注入假实现。 */
@@ -141,14 +156,20 @@ export function buildIngestPlan(input: {
   )
   const rawTags = readTags(note.frontmatter.tags)
   const tags = rawTags === null ? [] : lowerCaseAndDedupe(rawTags)
-  const known = new Set(input.vocabulary.map((tag) => tag.toLowerCase()))
+  const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
+  const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
+  const slug = `${pubDate.value.replace(/-/g, '')}-${name}`
+  // 已有文章按 slug 定位：命中即覆盖更新，路径以磁盘上的文件为准（可能是 .mdx）。
+  const located = input.findEntry(input.collection, slug)
+  const exists = located !== undefined
+  const targetPath = located ?? `${CONTENT_DIRS[input.collection]}/${slug}.md`
+  const known = new Set(
+    vocabularyFor(input.vocabulary, targetPath).map((tag) => tag.toLowerCase())
+  )
   const tagItems: PlannedTag[] = tags.map((tag) => ({
     value: tag,
     source: known.has(tag) ? 'existing' : 'new'
   }))
-  const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
-  const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
-  const slug = `${pubDate.value.replace(/-/g, '')}-${name}`
   // 图片在删 H1 之前处理：报错行号对着源笔记，正文改写的顺序也与读者看到的一致。
   const imagePlan = planImages({
     body: note.body,
@@ -163,8 +184,6 @@ export function buildIngestPlan(input: {
   // 只看最终 slug 就漏掉了首尾连字符。
   const slugIssue =
     (input.slug === undefined ? null : issueWithSlug(input.slug)) ?? issueWithSlug(slug)
-  const targetPath = `${CONTENT_DIRS[input.collection]}/${slug}.md`
-  const exists = input.exists(targetPath)
   const warnings: IngestPlan['warnings'] = []
   if (title.source !== 'frontmatter') {
     warnings.push({ code: 'title-fallback', message: titleFallbackMessage(title) })
@@ -204,13 +223,24 @@ export function buildIngestPlan(input: {
     })
   }
 
+  const preview = splitH1(imagePlan.body).without
+  // 只有覆盖时才需要 diff：新建没有「旧正文」可比，键也就不出现，创建路径的计划保持原样。
+  const diff =
+    located === undefined ? undefined : unifiedDiff(readExistingBody(input.read, located), preview)
+
   return {
     source: {
       path: input.path,
       sha256: sha256(input.content),
       bytes: input.content.byteLength
     },
-    article: { collection: input.collection, slug, targetPath, exists },
+    article: {
+      collection: input.collection,
+      slug,
+      targetPath,
+      exists,
+      ...(located === undefined ? {} : { mode: 'update' as const })
+    },
     fields: {
       title,
       description,
@@ -224,7 +254,8 @@ export function buildIngestPlan(input: {
     },
     body: {
       h1: { found: h1.found, text: h1.text, equivalentToTitle },
-      preview: splitH1(imagePlan.body).without
+      preview,
+      ...(diff === undefined ? {} : { diff })
     },
     images: imagePlan.images,
     warnings: [...warnings, ...imagePlan.warnings],
@@ -235,6 +266,30 @@ export function buildIngestPlan(input: {
       )
     }
   }
+}
+
+/**
+ * 读目标文章的当前正文。读不到就没法给出覆盖前的 diff，也就没法让覆盖不静默，
+ * 所以直接报出路径，而不是带着空的 diff 继续。
+ */
+function readExistingBody(read: (path: string) => Buffer, path: string): string {
+  try {
+    return readNote(read(path)).body
+  } catch (error) {
+    throw new Error(`读不到要覆盖的文章：${path}（${messageOf(error)}）；无法显示正文 diff。`)
+  }
+}
+
+/** 词表可以是固定列表，也可以是按目标路径定制的函数：命令层用它排除被覆盖的那篇。 */
+function vocabularyFor(
+  vocabulary: readonly string[] | ((targetPath: string) => readonly string[]),
+  targetPath: string
+): readonly string[] {
+  return typeof vocabulary === 'function' ? vocabulary(targetPath) : vocabulary
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**

@@ -14,8 +14,13 @@ export type IngestDeps = {
   /** 写二进制：图片附件按字节复制，不能走文本写盘（编码会改字节）。 */
   writeBytes: (path: string, bytes: Buffer) => void
   write: (stream: 'stdout' | 'stderr', text: string) => void
-  /** 站内已有文章路径，用来汇总标签词表；命令层遍历内容目录，测试注入。 */
+  /** 站内已有文章路径，用来汇总标签词表；更新时命令层会剔除被覆盖的那一篇。 */
   articles: () => string[]
+  /**
+   * 按集合与 slug 找已有文章，与站内路由共用 findEntryFile；返回相对路径（正斜杠），
+   * 找不到返回 undefined。命中即本次计划是更新。
+   */
+  entryFile: (collection: ContentCollection, slug: string) => string | undefined
 }
 
 export type IngestOutput = {
@@ -30,13 +35,16 @@ const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|note
 
 默认只把入库计划打到 stdout（一个 JSON 文档），不写任何文件。
 加 --apply 才写进目标文章；写入前会重读源笔记并核对计划里的 sha256。
+目标文章已存在时计划标为更新（article.mode = update），body.diff 给出磁盘正文与覆盖后正文的差异；
+--apply 覆盖它，同样是这一次确认，不额外提问。
 --slug 覆盖由标题派生的英文短名，日期前缀仍取 pubDate；slug 不合法时 plan 只告警，--apply 直接中止。
 --description 覆盖源笔记的 description，摘要措辞由调用方决定；缺了它 plan 只告警，--apply 直接中止。
 正文第一个 H1 会被删除；措辞与标题不同的 H1 留作 description 草稿，优先级是 --description → frontmatter → H1 草稿。
 本地图片附件会复制进 src/assets/ 并按 ../../assets/<name>.<ext> 改写引用，文件名去掉中文与时间戳；
 远程图片原地址不动，第三方域名的图片额外告警。找不到本地附件直接中止，不写坏链接。
 标签与站内现有文章汇总出的词表比对：已有标签标 existing，新标签标 new 并逐个产生
-tag-not-in-vocabulary 告警。新标签是合法的，确认后再 --apply。
+tag-not-in-vocabulary 告警。更新时被覆盖的那篇文章不计入词表——否则它独有的标签会因为
+「马上被自己删掉」而误报成已有。新标签是合法的，确认后再 --apply。
 
 退出码：0 成功 · 2 参数、源笔记、附件、slug 或 description 缺失或不合法 · 3 工作区或源笔记状态不合规
 `
@@ -96,7 +104,10 @@ export function runIngest(argv: string[], deps: IngestDeps): number {
 
     applyPlan(args.source, plan, deps)
     emit(deps, { mode, status: 'ingested', plan, result: { targetPath: plan.article.targetPath } })
-    deps.write('stderr', `已入库：${plan.article.targetPath}\n`)
+    deps.write(
+      'stderr',
+      `${plan.article.mode === 'update' ? '已更新' : '已入库'}：${plan.article.targetPath}\n`
+    )
     return EXIT.ok
   } catch (error) {
     const failure =
@@ -136,7 +147,14 @@ function preparePlan(
       collection,
       slug,
       description,
-      vocabulary: [...collectTagVocabulary({ articles: deps.articles(), read: deps.read })],
+      vocabulary: (targetPath) => [
+        ...collectTagVocabulary({
+          // 被覆盖的那篇文章不能算进词表：它马上要被新正文替换，独有的标签会随之消失。
+          articles: deps.articles().filter((path) => !samePath(path, targetPath)),
+          read: deps.read
+        })
+      ],
+      findEntry: deps.entryFile,
       exists: deps.exists,
       read: deps.read
     })
@@ -152,13 +170,6 @@ function applyPlan(sourcePath: string, plan: IngestPlan, deps: IngestDeps): void
       'workspace',
       EXIT.workspace,
       `工作区不干净：${dirty.join(', ')}；先提交或移走这些改动再 --apply。`
-    )
-  }
-  if (plan.article.exists) {
-    throw new StepFailure(
-      'workspace',
-      EXIT.workspace,
-      `目标文章已存在：${plan.article.targetPath}；已有文章的更新还没实现，这里不覆盖。`
     )
   }
 
@@ -262,17 +273,30 @@ function planSummary(plan: IngestPlan): string {
   const lines = [
     '入库计划（默认不写任何东西）：',
     `  源笔记：${plan.source.path}（${plan.source.bytes} 字节，sha256 ${plan.source.sha256}）`,
-    `  文章：${plan.article.collection}/${plan.article.slug}${plan.article.exists ? '（已存在）' : ''}`,
+    `  文章：${plan.article.collection}/${plan.article.slug}${
+      plan.article.mode === 'update' ? '（更新，覆盖已有文章）' : '（新建）'
+    }`,
     `  标题：${plan.fields.title.value}`,
     `  描述：${plan.fields.description.value ?? '（缺失）'}`,
     `  标签：${tagSummary(plan)}`,
     `  发布：${plan.fields.pubDate.value}`,
+    ...bodyLines(plan),
     ...imageLines(plan),
     `  提交信息：${plan.commit.message}`,
     ...plan.warnings.map((warning) => `  告警：${warning.code} — ${warning.message}`),
     '加 --apply 执行。'
   ]
   return `${lines.join('\n')}\n`
+}
+
+/** 更新时把正文 diff 原样摆出来；新建没有旧正文，这一段不出现。 */
+function bodyLines(plan: IngestPlan): string[] {
+  if (plan.body.diff === undefined) return []
+  if (plan.body.diff === '') return ['  正文差异：无（磁盘上的正文与覆盖后一致）']
+  return [
+    '  正文差异（当前 → 覆盖后）：',
+    ...plan.body.diff.split('\n').map((line) => `    ${line}`)
+  ]
 }
 
 function tagSummary(plan: IngestPlan): string {
@@ -373,6 +397,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function isCollection(value: string): value is ContentCollection {
   return Object.hasOwn(CONTENT_DIRS, value)
+}
+
+/** 命令层扫出的路径来自 node:path.join（Windows 是反斜杠），计划里是正斜杠。 */
+function samePath(left: string, right: string): boolean {
+  return left.replace(/\\/g, '/') === right.replace(/\\/g, '/')
 }
 
 function messageOf(error: unknown): string {

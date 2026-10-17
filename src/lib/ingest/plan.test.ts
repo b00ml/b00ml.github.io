@@ -29,7 +29,8 @@ const VOCABULARY = ['产品', '工程', 'AI', '知识管理', 'Astro', '信息�
 function planFor(
   content: Buffer,
   options: {
-    exists?: boolean
+    /** 磁盘上已存在的目标文章（正文已去掉 frontmatter）；存在即计划为更新。 */
+    existing?: { path: string; body: string }
     slug?: string
     description?: string
     path?: string
@@ -44,6 +45,7 @@ function planFor(
 ): IngestPlan {
   const files = options.files ?? {}
   const dirs = options.dirs ?? []
+  const existing = options.existing
   return buildIngestPlan({
     path: options.path ?? 'E:/notes/source.md',
     content,
@@ -51,9 +53,16 @@ function planFor(
     slug: options.slug,
     description: options.description,
     vocabulary: options.vocabulary ?? VOCABULARY,
-    exists: (path) =>
-      Object.hasOwn(files, path) || dirs.includes(path) || (options.exists ?? false),
+    findEntry: (_collection, slug) =>
+      existing !== undefined &&
+      (existing.path.endsWith(`/${slug}.md`) || existing.path.endsWith(`/${slug}.mdx`))
+        ? existing.path
+        : undefined,
+    exists: (path) => Object.hasOwn(files, path) || dirs.includes(path),
     read: (path) => {
+      if (existing !== undefined && path === existing.path) {
+        return Buffer.from(existing.body)
+      }
       const bytes = files[path]
       if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
       return bytes
@@ -393,10 +402,52 @@ test('adding an article with a new tag grows the vocabulary', () => {
 })
 
 test('an existing target is marked and planned as an update', () => {
-  const plan = planFor(note(`title: '已有文章'\ncreated: 2026-10-17`), { exists: true })
+  const plan = planFor(note(`title: '已有文章'\ncreated: 2026-10-17`), {
+    existing: { path: 'src/content/blog/20261017-已有文章.md', body: '正文。' }
+  })
 
-  expect(plan.article.exists).toBe(true)
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-已有文章',
+    targetPath: 'src/content/blog/20261017-已有文章.md',
+    exists: true,
+    mode: 'update'
+  })
+  // 正文一致时 diff 是空串：覆盖不会改变任何一行。
+  expect(plan.body.diff).toBe('')
   expect(plan.commit.message).toBe('content: update 20261017-已有文章')
+})
+
+test('a create plan keeps its exact shape: no mode and no diff', () => {
+  const plan = planFor(note(`title: 'brand-new'\ncreated: 2026-10-17`))
+
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-brand-new',
+    targetPath: 'src/content/blog/20261017-brand-new.md',
+    exists: false
+  })
+  expect('mode' in plan.article).toBe(false)
+  expect('diff' in plan.body).toBe(false)
+})
+
+test('an update plan carries the diff between the disk body and the overwritten body', () => {
+  const plan = planFor(note(`title: 'edit-me'\ncreated: 2026-10-17`, '# edit-me\n\n新正文。\n'), {
+    existing: { path: 'src/content/blog/20261017-edit-me.md', body: '旧正文。' }
+  })
+
+  expect(plan.body.preview).toBe('新正文。')
+  expect(plan.body.diff).toBe(
+    ['--- 当前正文', '+++ 覆盖后正文', '@@ -1,1 +1,1 @@', '-旧正文。', '+新正文。'].join('\n')
+  )
+})
+
+test('an update whose body is unchanged reports an empty diff', () => {
+  const plan = planFor(note(`title: 'same'\ncreated: 2026-10-17`), {
+    existing: { path: 'src/content/blog/20261017-same.md', body: '正文。' }
+  })
+
+  expect(plan.body.diff).toBe('')
 })
 
 test('a supplied slug replaces the title-derived name in the article, path and commit', () => {
@@ -418,10 +469,11 @@ test('a supplied slug replaces the title-derived name in the article, path and c
 
 test('an update keeps the supplied slug too', () => {
   const plan = planFor(note(`title: '中文标题'\ncreated: 2026-10-17`), {
-    exists: true,
+    existing: { path: 'src/content/blog/20261017-existing-post.md', body: '正文。' },
     slug: 'existing-post'
   })
 
+  expect(plan.article.mode).toBe('update')
   expect(plan.commit.message).toBe('content: update 20261017-existing-post')
 })
 

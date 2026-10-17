@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
-import { CONTENT_DIRS } from '../content/entries.ts'
+import { CONTENT_DIRS, findEntryFile } from '../content/entries.ts'
 import { runIngest, type IngestDeps } from './command.ts'
 
 /**
@@ -19,7 +19,13 @@ export function createDeps(): IngestDeps {
     write: (stream, text) => {
       ;(stream === 'stdout' ? process.stdout : process.stderr).write(text)
     },
-    articles: () => siteArticles()
+    articles: () => siteArticles(),
+    // 与站内路由共用 findEntryFile，避免「工具认为存在、路由找不到」的分叉。
+    // 计划里的路径一律相对仓库根、正斜杠，和 CONTENT_DIRS 的写法一致。
+    entryFile: (collection, slug) => {
+      const file = findEntryFile(collection, slug)
+      return file === undefined ? undefined : relative(process.cwd(), file).replace(/\\/g, '/')
+    }
   }
 }
 
