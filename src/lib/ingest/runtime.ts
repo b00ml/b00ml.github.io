@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
+import { CONTENT_DIRS } from '../content/entries.ts'
 import { runIngest, type IngestDeps } from './command.ts'
 
 /**
@@ -16,8 +18,24 @@ export function createDeps(): IngestDeps {
     writeBytes: (path, bytes) => writeFileSync(path, bytes),
     write: (stream, text) => {
       ;(stream === 'stdout' ? process.stdout : process.stderr).write(text)
-    }
+    },
+    articles: () => siteArticles()
   }
+}
+
+/** 站内已有文章：三个内容目录下的 Markdown 文件，标签词表从它们的 frontmatter 汇总。 */
+function siteArticles(): string[] {
+  return Object.values(CONTENT_DIRS).flatMap((dir) => markdownFiles(dir))
+}
+
+function markdownFiles(dir: string): string[] {
+  const files: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) files.push(...markdownFiles(path))
+    else if (/\.mdx?$/.test(entry.name)) files.push(path)
+  }
+  return files
 }
 
 export function main(argv: string[]): number {

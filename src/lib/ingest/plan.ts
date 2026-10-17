@@ -34,6 +34,15 @@ export type PlannedField<T> = {
   source: FieldSource
 }
 
+/** 一个标签相对站内词表的状态；沿用 FieldSource 的 existing / new 两个值。 */
+export type PlannedTag = {
+  value: string
+  source: 'existing' | 'new'
+}
+
+/** 标签字段：value 是真正会写进文章的那一版，items 逐条给出它是已有还是新增。 */
+export type PlannedTags = PlannedField<string[]> & { items: PlannedTag[] }
+
 /** 已经兜底出来的非空值，比 PlannedField 收窄一步，省掉取用处的空值判断。 */
 type ResolvedField = { value: string; source: FieldSource }
 
@@ -61,7 +70,7 @@ export type IngestPlan = {
   fields: {
     title: PlannedField<string>
     description: PlannedField<string>
-    tags: PlannedField<string[]>
+    tags: PlannedTags
     pubDate: PlannedField<string>
     slug: PlannedField<string>
   }
@@ -99,6 +108,8 @@ export function readNote(content: Buffer): Note {
  * 目标路径落在对应集合下；正文第一个 H1 会被删除——页面布局已经把 title 渲染成 h1，
  * 再留一个就是两个 h1。本地图片附件会解析成真实文件、按清洗后的名字记进计划，
  * 正文引用改成 `../../assets/<name>.<ext>`；远程图片保持原地址只出告警。
+ * 标签先按内容 schema 的规则小写去重，再与站内词表比对：已有标签标 existing，
+ * 其余标 new 并逐个告警——新标签是合法的，但每个都会生成一个新的标签页，得让人看见。
  */
 export function buildIngestPlan(input: {
   path: string
@@ -108,6 +119,8 @@ export function buildIngestPlan(input: {
   slug?: string
   /** 调用方给的一句摘要，覆盖源笔记的 description；摘要措辞是判断，工具不生成。 */
   description?: string
+  /** 站内已有标签（大小写不敏感），由命令层扫描现有文章汇总；测试注入固定词表。 */
+  vocabulary: readonly string[]
   /** 目标文章是否已存在，由调用方提供（命令层读文件系统，测试用假实现）。 */
   exists: (targetPath: string) => boolean
   /** 读文件字节：解析附件、算哈希都用它；命令层读文件系统，测试注入假实现。 */
@@ -126,7 +139,13 @@ export function buildIngestPlan(input: {
     note.frontmatter.description,
     h1Draft
   )
-  const tags = readTags(note.frontmatter.tags)
+  const rawTags = readTags(note.frontmatter.tags)
+  const tags = rawTags === null ? [] : lowerCaseAndDedupe(rawTags)
+  const known = new Set(input.vocabulary.map((tag) => tag.toLowerCase()))
+  const tagItems: PlannedTag[] = tags.map((tag) => ({
+    value: tag,
+    source: known.has(tag) ? 'existing' : 'new'
+  }))
   const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
   const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
   const slug = `${pubDate.value.replace(/-/g, '')}-${name}`
@@ -177,6 +196,13 @@ export function buildIngestPlan(input: {
         '缺少 description：源笔记没有，--description 也没有给出非空值；不编造，请用 --description 提供一句摘要。'
     })
   }
+  for (const tag of tagItems) {
+    if (tag.source === 'existing') continue
+    warnings.push({
+      code: 'tag-not-in-vocabulary',
+      message: `标签「${tag.value}」不在站内词表里：这是新标签，会生成新的 /tags/${tag.value} 页面；请确认后加 --apply。`
+    })
+  }
 
   return {
     source: {
@@ -188,7 +214,11 @@ export function buildIngestPlan(input: {
     fields: {
       title,
       description,
-      tags: { value: tags ?? [], source: tags === null ? 'missing' : 'frontmatter' },
+      tags: {
+        value: tags,
+        source: rawTags === null ? 'missing' : 'frontmatter',
+        items: tagItems
+      },
       pubDate,
       slug: { value: slug, source: slugSource }
     },
@@ -369,6 +399,39 @@ function readTags(raw: unknown): string[] | null {
     throw new Error('frontmatter 的 tags 不是字符串数组')
   }
   return raw as string[]
+}
+
+/**
+ * 站内已有标签的词表：扫描内容目录里已有文章的 frontmatter，取 tags。词表必须从真实
+ * 文章来——维护一份独立的标签白名单，下一篇文章就会让它和站内脱钩。单篇文章坏掉
+ * 不该让入库停摆（构建会先报它），跳过即可。
+ */
+export function collectTagVocabulary(input: {
+  articles: readonly string[]
+  read: (path: string) => Buffer
+}): Set<string> {
+  const vocabulary = new Set<string>()
+  for (const path of input.articles) {
+    let tags: unknown
+    try {
+      tags = readNote(input.read(path)).frontmatter.tags
+    } catch {
+      continue
+    }
+    if (!Array.isArray(tags)) continue
+    for (const tag of tags) {
+      if (typeof tag === 'string') vocabulary.add(tag.toLowerCase())
+    }
+  }
+  return vocabulary
+}
+
+/**
+ * 与 src/content.config.ts 的 removeDupsAndLowerCase 一致：先小写，再按首次出现去重。
+ * 计划里报的标签必须就是真正写进文章的形态，否则词表比对的是磁盘上不存在的值。
+ */
+function lowerCaseAndDedupe(tags: readonly string[]): string[] {
+  return Array.from(new Set(tags.map((tag) => tag.toLowerCase())))
 }
 
 function yamlString(value: string): string {

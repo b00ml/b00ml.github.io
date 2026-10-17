@@ -1,7 +1,7 @@
 import { CONTENT_DIRS, type ContentCollection } from '../content/entries.ts'
 import { EXIT } from '../publish/command.ts'
 import { parseStatus } from '../publish/workspace.ts'
-import { buildIngestPlan, renderArticle, sha256, type IngestPlan } from './plan.ts'
+import { buildIngestPlan, collectTagVocabulary, renderArticle, sha256, type IngestPlan } from './plan.ts'
 
 /** 与 publish 同一套退出码，不新增含义；1 只留给未预期的异常。 */
 export type IngestStep = 'usage' | 'workspace' | 'internal'
@@ -14,6 +14,8 @@ export type IngestDeps = {
   /** 写二进制：图片附件按字节复制，不能走文本写盘（编码会改字节）。 */
   writeBytes: (path: string, bytes: Buffer) => void
   write: (stream: 'stdout' | 'stderr', text: string) => void
+  /** 站内已有文章路径，用来汇总标签词表；命令层遍历内容目录，测试注入。 */
+  articles: () => string[]
 }
 
 export type IngestOutput = {
@@ -33,6 +35,8 @@ const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|note
 正文第一个 H1 会被删除；措辞与标题不同的 H1 留作 description 草稿，优先级是 --description → frontmatter → H1 草稿。
 本地图片附件会复制进 src/assets/ 并按 ../../assets/<name>.<ext> 改写引用，文件名去掉中文与时间戳；
 远程图片原地址不动，第三方域名的图片额外告警。找不到本地附件直接中止，不写坏链接。
+标签与站内现有文章汇总出的词表比对：已有标签标 existing，新标签标 new 并逐个产生
+tag-not-in-vocabulary 告警。新标签是合法的，确认后再 --apply。
 
 退出码：0 成功 · 2 参数、源笔记、附件、slug 或 description 缺失或不合法 · 3 工作区或源笔记状态不合规
 `
@@ -132,6 +136,7 @@ function preparePlan(
       collection,
       slug,
       description,
+      vocabulary: [...collectTagVocabulary({ articles: deps.articles(), read: deps.read })],
       exists: deps.exists,
       read: deps.read
     })
@@ -254,14 +259,13 @@ function emit(deps: IngestDeps, output: IngestOutput): void {
 }
 
 function planSummary(plan: IngestPlan): string {
-  const tags = plan.fields.tags.value ?? []
   const lines = [
     '入库计划（默认不写任何东西）：',
     `  源笔记：${plan.source.path}（${plan.source.bytes} 字节，sha256 ${plan.source.sha256}）`,
     `  文章：${plan.article.collection}/${plan.article.slug}${plan.article.exists ? '（已存在）' : ''}`,
     `  标题：${plan.fields.title.value}`,
     `  描述：${plan.fields.description.value ?? '（缺失）'}`,
-    `  标签：${tags.length > 0 ? tags.join('，') : '（无）'}`,
+    `  标签：${tagSummary(plan)}`,
     `  发布：${plan.fields.pubDate.value}`,
     ...imageLines(plan),
     `  提交信息：${plan.commit.message}`,
@@ -269,6 +273,14 @@ function planSummary(plan: IngestPlan): string {
     '加 --apply 执行。'
   ]
   return `${lines.join('\n')}\n`
+}
+
+function tagSummary(plan: IngestPlan): string {
+  const tags = plan.fields.tags.items
+  if (tags.length === 0) return '（无）'
+  return tags
+    .map((tag) => `${tag.value}（${tag.source === 'existing' ? '已有' : '新增'}）`)
+    .join('，')
 }
 
 function imageLines(plan: IngestPlan): string[] {

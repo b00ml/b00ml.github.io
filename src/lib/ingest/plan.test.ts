@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 
 import {
   buildIngestPlan,
+  collectTagVocabulary,
   deriveSlug,
   readNote,
   renderArticle,
@@ -22,6 +23,9 @@ function beside(notePath: string, ...parts: string[]): string {
   return join(dirname(resolve(notePath)), ...parts)
 }
 
+/** 仓库现有文章汇总出的词表，默认值让不关心标签的用例保持安静。 */
+const VOCABULARY = ['产品', '工程', 'AI', '知识管理', 'Astro', '信息架构']
+
 function planFor(
   content: Buffer,
   options: {
@@ -30,6 +34,8 @@ function planFor(
     description?: string
     path?: string
     now?: Date
+    /** 站内已有标签；默认是仓库当前那六个，标签用例各自注入。 */
+    vocabulary?: string[]
     /** 附件文件：绝对路径 → 字节。 */
     files?: Record<string, Buffer>
     /** 额外存在的目录（例如笔记库根的 .obsidian）。 */
@@ -44,6 +50,7 @@ function planFor(
     collection: 'blog',
     slug: options.slug,
     description: options.description,
+    vocabulary: options.vocabulary ?? VOCABULARY,
     exists: (path) =>
       Object.hasOwn(files, path) || dirs.includes(path) || (options.exists ?? false),
     read: (path) => {
@@ -89,7 +96,14 @@ created: 2026-10-17`,
   expect(plan.fields).toEqual({
     title: { value: 'context-assets', source: 'frontmatter' },
     description: { value: '把上下文攒起来', source: 'frontmatter' },
-    tags: { value: ['AI', '知识管理'], source: 'frontmatter' },
+    tags: {
+      value: ['ai', '知识管理'],
+      source: 'frontmatter',
+      items: [
+        { value: 'ai', source: 'existing' },
+        { value: '知识管理', source: 'existing' }
+      ]
+    },
     pubDate: { value: '2026-10-17', source: 'frontmatter' },
     slug: { value: '20261017-context-assets', source: 'title' }
   })
@@ -115,7 +129,7 @@ test('a note without frontmatter falls back to the body H1 and today', () => {
   expect(plan.fields.title).toEqual({ value: 'Hello World', source: 'h1' })
   expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'today' })
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
-  expect(plan.fields.tags).toEqual({ value: [], source: 'missing' })
+  expect(plan.fields.tags).toEqual({ value: [], source: 'missing', items: [] })
   expect(plan.article.slug).toBe('20261017-hello-world')
   expect(plan.body.h1).toEqual({ found: true, text: 'Hello World', equivalentToTitle: true })
   expect(plan.warnings.map((warning) => warning.code)).toEqual([
@@ -234,8 +248,148 @@ test('a video-summary note using the date field still gets a pubDate', () => {
 test('missing tags become an empty list with the missing source', () => {
   const plan = planFor(note(`title: '没有标签'\ncreated: 2026-10-13`))
 
-  expect(plan.fields.tags).toEqual({ value: [], source: 'missing' })
+  expect(plan.fields.tags).toEqual({ value: [], source: 'missing', items: [] })
   expect(renderArticle(plan.fields, plan.body.preview)).not.toContain('tags:')
+})
+
+test('with an empty corpus every tag is new and warns once per tag', () => {
+  const plan = planFor(
+    note(`title: 'empty-corpus'\ndescription: '描述'\ncreated: 2026-10-17\ntags: ['产品', 'AI']`),
+    { vocabulary: [] }
+  )
+
+  expect(plan.fields.tags).toEqual({
+    value: ['产品', 'ai'],
+    source: 'frontmatter',
+    items: [
+      { value: '产品', source: 'new' },
+      { value: 'ai', source: 'new' }
+    ]
+  })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
+    'tag-not-in-vocabulary',
+    'tag-not-in-vocabulary'
+  ])
+  expect(plan.warnings[1].message).toContain('标签「产品」不在站内词表里')
+  expect(plan.warnings[1].message).toContain('/tags/产品')
+  expect(plan.warnings[2].message).toContain('标签「ai」不在站内词表里')
+})
+
+test('every tag already in the corpus is existing and warns nothing', () => {
+  const plan = planFor(
+    note(
+      `title: 'all-known'\ndescription: '描述'\ncreated: 2026-10-17\ntags: ['产品', '工程', 'AI', '知识管理', 'Astro', '信息架构']`
+    )
+  )
+
+  expect(plan.fields.tags.items.map((tag) => tag.source)).toEqual([
+    'existing',
+    'existing',
+    'existing',
+    'existing',
+    'existing',
+    'existing'
+  ])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
+test('a mix marks each tag separately and warns only for the new one', () => {
+  const plan = planFor(
+    note(`title: 'mixed-tags'\ndescription: '描述'\ncreated: 2026-10-17\ntags: ['产品', 'RAG']`),
+    { vocabulary: ['产品'] }
+  )
+
+  expect(plan.fields.tags.items).toEqual([
+    { value: '产品', source: 'existing' },
+    { value: 'rag', source: 'new' }
+  ])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
+    'tag-not-in-vocabulary'
+  ])
+  expect(plan.warnings[1].message).toContain('/tags/rag')
+})
+
+test('tag matching is case-insensitive and duplicates collapse to the stored form', () => {
+  const plan = planFor(
+    note(
+      `title: 'case-tags'\ndescription: '描述'\ncreated: 2026-10-17\ntags: ['AI', 'ai', '知识管理', 'AI']`
+    ),
+    { vocabulary: ['AI', '知识管理'] }
+  )
+
+  expect(plan.fields.tags.value).toEqual(['ai', '知识管理'])
+  expect(plan.fields.tags.items).toEqual([
+    { value: 'ai', source: 'existing' },
+    { value: '知识管理', source: 'existing' }
+  ])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+  expect(renderArticle(plan.fields, plan.body.preview)).toContain(`tags: ['ai', '知识管理']`)
+})
+
+test('CJK tags match the vocabulary like any other tag', () => {
+  const plan = planFor(
+    note(
+      `title: 'cjk-tags'\ndescription: '描述'\ncreated: 2026-10-17\ntags: ['知识管理', '信息架构', '产品']`
+    ),
+    { vocabulary: ['产品', '信息架构', '知识管理'] }
+  )
+
+  expect(plan.fields.tags.items.map((tag) => tag.source)).toEqual([
+    'existing',
+    'existing',
+    'existing'
+  ])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
+test('a tags block that is not an array of strings is rejected', () => {
+  expect(() => planFor(note(`title: 'x'\ntags: 'AI'`))).toThrow(
+    'frontmatter 的 tags 不是字符串数组'
+  )
+  expect(() => planFor(note(`title: 'x'\ntags: ['AI', 42]`))).toThrow(
+    'frontmatter 的 tags 不是字符串数组'
+  )
+})
+
+test('collectTagVocabulary unions the tags of every article and skips unusable ones', () => {
+  const files: Record<string, Buffer> = {
+    'src/content/blog/a.md': note(`title: 'A'\ntags: ['AI', '知识管理']`),
+    'src/content/notes/b.md': note(`title: 'B'\ntags: ['ai', 'Astro']`),
+    'src/content/notes/no-tags.md': note(`title: '没有标签'`),
+    'src/content/product/broken.md': Buffer.from('---\ntitle: [\n---\n')
+  }
+  const vocabulary = collectTagVocabulary({
+    articles: Object.keys(files),
+    read: (path) => {
+      const bytes = files[path]
+      if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
+      return bytes
+    }
+  })
+
+  expect([...vocabulary].sort()).toEqual(['ai', 'astro', '知识管理'])
+})
+
+test('an empty corpus collects an empty vocabulary', () => {
+  const vocabulary = collectTagVocabulary({
+    articles: [],
+    read: () => {
+      throw new Error('不该读任何文件')
+    }
+  })
+
+  expect(vocabulary.size).toBe(0)
+})
+
+test('adding an article with a new tag grows the vocabulary', () => {
+  const article = note(`title: 'new-post'\ntags: ['RAG']`)
+  const before = collectTagVocabulary({ articles: [], read: () => Buffer.alloc(0) })
+  const after = collectTagVocabulary({ articles: ['src/content/blog/new.md'], read: () => article })
+
+  expect(before.has('rag')).toBe(false)
+  expect(after.has('rag')).toBe(true)
 })
 
 test('an existing target is marked and planned as an update', () => {
@@ -410,7 +564,7 @@ test('renderArticle writes single-quoted frontmatter, escapes quotes and keeps t
 
   expect(article.startsWith(`---\ntitle: 'It''s a note'\n`)).toBe(true)
   expect(article).toContain(`pubDate: 2026-10-17`)
-  expect(article).toContain(`tags: ['AI']`)
+  expect(article).toContain(`tags: ['ai']`)
   expect(article.endsWith('\n---\n\n正文。\n')).toBe(true)
 })
 
