@@ -75,6 +75,28 @@ export function parseNameStatus(output: string): ChangedFile[] {
     })
 }
 
+/**
+ * 暂存区（index）里有改动的路径：`git status --porcelain` 的 X 位不是空格也不是 `?`。
+ * 重命名/复制连同原路径一起返回——在 index 里它们是同一件事的两端。
+ */
+export function stagedPaths(output: string): string[] {
+  const parts = output.split('\0')
+  const paths: string[] = []
+  for (let index = 0; index < parts.length; index++) {
+    const entry = parts[index]
+    if (!entry) continue
+    const x = entry[0]
+    const y = entry[1]
+    const path = entry.slice(3)
+    const renamed = x === 'R' || y === 'R' || x === 'C' || y === 'C'
+    const from = renamed ? parts[++index] : undefined
+    if (x === ' ' || x === '?') continue
+    paths.push(path)
+    if (from) paths.push(from)
+  }
+  return paths
+}
+
 export function isAllowedPath(path: string): boolean {
   return ALLOWED_FILES.includes(path) || ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix))
 }

@@ -2,7 +2,7 @@ import { DEPLOY_STEP_NAME, evaluateDeploy, type RunSnapshot } from './deploy.ts'
 import { evaluateLive, type LiveResponse } from './live.ts'
 import { buildPlan, type PublishPlan } from './plan.ts'
 import { parseGitHubRepo, siteOrigin } from './repo.ts'
-import { blockedPaths, parseNameStatus, parseStatus } from './workspace.ts'
+import { blockedPaths, parseNameStatus, parseStatus, stagedPaths } from './workspace.ts'
 
 export const EXIT = {
   ok: 0,
@@ -258,8 +258,36 @@ async function applyPlan(
   }
 
   if (plan.commit) {
+    // 只暂存计划里的路径：构建和测试在确认计划之后才跑，这期间任何进程写出的文件都不该
+    // 被 git add -A 卷进提交。重命名要把原路径也交给 git，否则只看到新文件凭空出现。
+    const planned = plan.files.flatMap((file) =>
+      file.from === undefined ? [file.path] : [file.path, file.from]
+    )
     try {
-      deps.git(['add', '-A'])
+      if (planned.length > 0) deps.git(['add', '-A', '--', ...planned])
+    } catch (error) {
+      throw new StepFailure('commit', EXIT.commit, `暂存计划里的改动失败：${messageOf(error)}`)
+    }
+
+    // 计划是人确认过的那份清单，提交必须恰好等于它；暂存区里多出的路径一律中止。
+    const allowed = new Set(planned)
+    let staged: string[]
+    try {
+      staged = stagedPaths(deps.git(['status', '--porcelain', '-z', '-uall']))
+    } catch (error) {
+      throw new StepFailure('workspace', EXIT.workspace, `读不到暂存区状态：${messageOf(error)}`)
+    }
+    const stray = staged.filter((path) => !allowed.has(path))
+    if (stray.length > 0) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `暂存区里出现了计划外的改动：${stray.join(', ')}；构建或测试可能改写了工作区，请查清后重新生成计划再发布。`,
+        stray
+      )
+    }
+
+    try {
       deps.git(['commit', '-m', plan.commit.message])
     } catch (error) {
       throw new StepFailure('commit', EXIT.commit, `提交失败：${messageOf(error)}`)

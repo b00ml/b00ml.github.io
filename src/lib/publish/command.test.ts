@@ -23,6 +23,8 @@ type Live = { status: number; lastModified: string | null }
 
 type Scenario = {
   status?: string
+  /** 确认计划之后、提交之前 git status 的返回，用来模拟构建往暂存区塞了文件。 */
+  staged?: string
   branch?: string
   pendingCommits?: string
   pendingDiff?: string
@@ -78,6 +80,7 @@ function harness(scenario: Scenario = {}) {
   const headCalls: string[] = []
   const sleeps: number[] = []
   let commitMessage: string | undefined
+  let statusCalls = 0
 
   const pages: Live[] = [
     ...(scenario.pages ?? [{ status: 200, lastModified: '2026-10-17T13:09:30Z' }])
@@ -110,7 +113,8 @@ function harness(scenario: Scenario = {}) {
         case 'remote':
           return `${scenario.remote ?? 'https://github.com/b00ml/b00ml.github.io.git'}\n`
         case 'status':
-          return scenario.status ?? ''
+          statusCalls += 1
+          return statusCalls === 1 ? (scenario.status ?? '') : (scenario.staged ?? scenario.status ?? '')
         case 'branch':
           return scenario.branch ?? 'main'
         case 'log':
@@ -364,6 +368,51 @@ test('apply commits with the planned message, pushes, and waits for the live URL
   expect(h.ghCalls.every((args) => args.includes('--repo') && args.includes(REPO))).toBe(true)
   expect(h.ghCalls[0]).toContain('--workflow')
   expect(h.headCalls).toEqual([POST_URL])
+})
+
+test('a path staged after the plan gate aborts before commit and names it', async () => {
+  const h = harness({
+    status: `?? ${POST}\0`,
+    staged: `A  ${POST}\0A  AGENTS.md\0`
+  })
+
+  const code = await h.run(['--apply'])
+
+  expect(code).toBe(3)
+  const out = h.output()
+  expect(out.status).toBe('failed')
+  expect(out.error.step).toBe('workspace')
+  expect(out.error.files).toEqual(['AGENTS.md'])
+  expect(out.error.message).toContain('AGENTS.md')
+  expect(h.commitMessage()).toBeUndefined()
+  expect(h.gitCalls.filter((args) => args[0] === 'push')).toEqual([])
+})
+
+test('a deletion of a planned path is still staged', async () => {
+  const doomed = 'src/content/blog/20261017-old-post.md'
+  const h = harness({ status: ` D ${doomed}\0`, staged: `D  ${doomed}\0` })
+
+  const code = await h.run(['--apply'])
+
+  expect(code).toBe(0)
+  expect(h.gitCalls.filter((args) => args[0] === 'add')).toEqual([['add', '-A', '--', doomed]])
+  expect(h.commitMessage()).toBe('content: remove 20261017-old-post')
+})
+
+test('a legitimate run stages exactly the planned paths', async () => {
+  const asset = 'src/assets/context-assets-flywheel.webp'
+  const h = harness({
+    status: ` M ${asset}\0?? ${POST}\0`,
+    staged: `M  ${asset}\0A  ${POST}\0`
+  })
+
+  const code = await h.run(['--apply'])
+
+  expect(code).toBe(0)
+  expect(h.gitCalls.filter((args) => args[0] === 'add')).toEqual([
+    ['add', '-A', '--', asset, POST]
+  ])
+  expect(h.commitMessage()).toBe('content: publish 20261017-new-post')
 })
 
 test('a blocked push is a normal outcome with a rerun hint, and the commit survives', async () => {
