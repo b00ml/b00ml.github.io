@@ -3,9 +3,9 @@ import { expect, test } from 'bun:test'
 import { runIngest, type IngestDeps } from './command'
 
 const SOURCE = 'E:/notes/ticket.md'
-const TARGET = 'src/content/blog/20261017-一篇测试笔记.md'
+const TARGET = 'src/content/blog/20261017-a-test-note.md'
 const NOTE = `---
-title: '一篇测试笔记'
+title: 'a-test-note'
 description: '测试用的描述'
 tags: ['测试']
 created: 2026-10-17
@@ -97,7 +97,9 @@ test('every field in the plan carries a source from the vocabulary', () => {
     'h1-draft',
     'missing',
     'existing',
-    'new'
+    'new',
+    'title',
+    'cli'
   ]
   for (const field of Object.values(fields) as { value: unknown; source: string }[]) {
     expect(vocabulary).toContain(field.source)
@@ -113,13 +115,83 @@ test('the planned article is the collection directory plus date-prefixed slug', 
   const { plan } = h.output()
   expect(plan.article).toEqual({
     collection: 'blog',
-    slug: '20261017-一篇测试笔记',
+    slug: '20261017-a-test-note',
     targetPath: TARGET,
     exists: false
   })
-  expect(plan.fields.title).toEqual({ value: '一篇测试笔记', source: 'frontmatter' })
+  expect(plan.fields.title).toEqual({ value: 'a-test-note', source: 'frontmatter' })
   expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'frontmatter' })
-  expect(plan.commit.message).toBe('content: publish 20261017-一篇测试笔记')
+  expect(plan.commit.message).toBe('content: publish 20261017-a-test-note')
+})
+
+test('--slug flows into the article, its target path and the commit message', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--slug', 'leetcode-first-glance'])
+
+  expect(code).toBe(0)
+  const { plan } = h.output()
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-leetcode-first-glance',
+    targetPath: 'src/content/blog/20261017-leetcode-first-glance.md',
+    exists: false
+  })
+  expect(plan.fields.slug).toEqual({ value: '20261017-leetcode-first-glance', source: 'cli' })
+  expect(plan.commit.message).toBe('content: publish 20261017-leetcode-first-glance')
+  expect(plan.warnings).toEqual([])
+  expect(h.writes).toEqual([])
+})
+
+test('an illegal --slug warns in plan mode and still returns the plan', () => {
+  for (const slug of ['Ticket', 'has space', '-leading', 'a'.repeat(81), '']) {
+    const h = harness()
+
+    const code = h.run([SOURCE, '--collection', 'blog', '--slug', slug])
+
+    expect(code).toBe(0)
+    expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
+  }
+})
+
+test('an illegal --slug aborts apply with exit 2 and writes nothing', () => {
+  for (const slug of ['Ticket', 'has space', '-leading', 'a'.repeat(81), '']) {
+    const h = harness()
+
+    const code = h.run([SOURCE, '--collection', 'blog', '--slug', slug, '--apply'])
+
+    expect(code).toBe(2)
+    expect(h.output().error.step).toBe('usage')
+    expect(h.output().error.message).toContain('--slug')
+    expect(h.writes).toEqual([])
+  }
+})
+
+test('a Chinese-derived slug is warned about in plan mode and refused by apply', () => {
+  const note = NOTE.replace(`title: 'a-test-note'`, `title: '一篇测试笔记'`)
+
+  const planRun = harness({ note })
+  expect(planRun.run([SOURCE, '--collection', 'blog'])).toBe(0)
+  expect(planRun.output().plan.article.slug).toBe('20261017-一篇测试笔记')
+  expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'slug-not-valid'
+  ])
+
+  const applyRun = harness({ note })
+  expect(applyRun.run([SOURCE, '--collection', 'blog', '--apply'])).toBe(2)
+  expect(applyRun.output().error.message).toContain('--slug')
+  expect(applyRun.writes).toEqual([])
+})
+
+test('--slug overrides a Chinese title so apply writes the English slug', () => {
+  const h = harness({ note: NOTE.replace(`title: 'a-test-note'`, `title: '一篇测试笔记'`) })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--slug', 'ticket-note', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  expect(h.writes[0].path).toBe('src/content/blog/20261017-ticket-note.md')
+  expect(h.output().result).toEqual({ targetPath: 'src/content/blog/20261017-ticket-note.md' })
 })
 
 test('a missing --collection is a usage error and no article is written', () => {
@@ -190,7 +262,7 @@ test('apply writes the frontmatter and the body verbatim to the target article',
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
   expect(write.path).toBe(TARGET)
-  expect(write.text.startsWith(`---\ntitle: '一篇测试笔记'\n`)).toBe(true)
+  expect(write.text.startsWith(`---\ntitle: 'a-test-note'\n`)).toBe(true)
   expect(write.text).toContain(`pubDate: 2026-10-17`)
   expect(write.text).toContain(`tags: ['测试']`)
   expect(write.text.endsWith('\n# 正文里的标题\n\n正文。\n')).toBe(true)
@@ -239,7 +311,7 @@ test('a failed apply still reports the plan it had built', () => {
 
   const out = h.output()
   expect(out.status).toBe('failed')
-  expect(out.plan.article.slug).toBe('20261017-一篇测试笔记')
+  expect(out.plan.article.slug).toBe('20261017-a-test-note')
 })
 
 test('unknown flags are usage errors', () => {

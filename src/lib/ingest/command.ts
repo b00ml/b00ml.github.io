@@ -22,12 +22,13 @@ export type IngestOutput = {
   error?: { step: IngestStep; message: string }
 }
 
-const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|notes|product> [--apply]
+const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|notes|product> [--slug <英文短名>] [--apply]
 
 默认只把入库计划打到 stdout（一个 JSON 文档），不写任何文件。
 加 --apply 才写进目标文章；写入前会重读源笔记并核对计划里的 sha256。
+--slug 覆盖由标题派生的英文短名，日期前缀仍取 pubDate；slug 不合法时 plan 只告警，--apply 直接中止。
 
-退出码：0 成功 · 2 参数或源笔记不合法 · 3 工作区或源笔记状态不合规
+退出码：0 成功 · 2 参数、源笔记或 slug 不合法 · 3 工作区或源笔记状态不合规
 `
 
 class StepFailure extends Error {
@@ -62,7 +63,12 @@ export function runIngest(argv: string[], deps: IngestDeps): number {
     }
 
     mode = args.apply ? 'apply' : 'plan'
-    plan = preparePlan(args.source, args.collection, deps)
+    plan = preparePlan(args.source, args.collection, args.slug, deps)
+
+    const slugWarning = plan.warnings.find((warning) => warning.code === 'slug-not-valid')
+    if (mode === 'apply' && slugWarning !== undefined) {
+      throw new StepFailure('usage', EXIT.usage, slugWarning.message)
+    }
 
     if (mode === 'plan') {
       emit(deps, { mode, status: 'planned', plan })
@@ -95,6 +101,7 @@ export function runIngest(argv: string[], deps: IngestDeps): number {
 function preparePlan(
   sourcePath: string,
   collection: ContentCollection,
+  slug: string | undefined,
   deps: IngestDeps
 ): IngestPlan {
   let content: Buffer
@@ -108,6 +115,7 @@ function preparePlan(
       path: sourcePath,
       content,
       collection,
+      slug,
       exists: deps.exists
     })
   } catch (error) {
@@ -186,6 +194,7 @@ type ParsedArgs = {
   help: boolean
   source?: string
   collection?: ContentCollection
+  slug?: string
   error?: string
 }
 
@@ -194,6 +203,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let help = false
   let source: string | undefined
   let rawCollection: string | undefined
+  let slug: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -201,6 +211,16 @@ function parseArgs(argv: string[]): ParsedArgs {
       apply = true
     } else if (arg === '--help' || arg === '-h') {
       help = true
+    } else if (arg === '--slug') {
+      const value = argv[index + 1]
+      // slug 值本身可能就是要校验的错误值（例如 -leading），只有 -- 开头才当作缺少值。
+      if (value === undefined || value.startsWith('--')) {
+        return { apply, help, source, error: '--slug 缺少值' }
+      }
+      slug = value
+      index += 1
+    } else if (arg.startsWith('--slug=')) {
+      slug = arg.slice('--slug='.length)
     } else if (arg === '--collection') {
       const value = argv[index + 1]
       if (value === undefined || value.startsWith('-')) {
@@ -230,7 +250,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       error: `未知的 --collection：${rawCollection}（可选 blog / notes / product）`
     }
   }
-  return { apply, help, source, collection: rawCollection }
+  return { apply, help, source, collection: rawCollection, slug }
 }
 
 function isCollection(value: string): value is ContentCollection {
