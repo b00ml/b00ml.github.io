@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { join } from 'node:path'
 
+import { CONTENT_DIRS } from '../content/entries'
 import { runIngest, type IngestDeps } from './command'
 import { sha256 } from './plan'
 
@@ -28,7 +29,10 @@ created: 2026-10-17
 type Options = {
   note?: string
   status?: string
-  existing?: string[]
+  /** 磁盘上已有的目标文章：相对路径（正斜杠）→ 文件内容，用来模拟更新。 */
+  existingArticles?: Record<string, string>
+  /** 词表扫描的站内文章路径；默认只有语料那一篇。 */
+  articles?: string[]
   /** 站内已有标签；默认「测试」已在词表里，与 NOTE 的 tags 对齐。传 [] 即空语料。 */
   vocabulary?: string[]
   /** 第二次读源笔记时返回的内容，用来模拟 dry-run 之后源文件被改。 */
@@ -50,6 +54,7 @@ function harness(options: Options = {}) {
   const reads: string[] = []
   const gitCalls: string[][] = []
   const files = new Map<string, Buffer>(Object.entries(options.files ?? {}))
+  const existingArticles = options.existingArticles ?? {}
   const counts = new Map<string, number>()
   const tags = options.vocabulary ?? ['测试']
   const corpus = `---\ntitle: 'existing'\ntags: [${tags.map((tag) => `'${tag}'`).join(', ')}]\n---\n\n正文。\n`
@@ -61,7 +66,11 @@ function harness(options: Options = {}) {
       return options.status ?? ''
     },
     read: (path) => {
-      if (path === CORPUS_ARTICLE) return Buffer.from(corpus)
+      const normalized = path.replace(/\\/g, '/')
+      if (normalized === CORPUS_ARTICLE) return Buffer.from(corpus)
+      if (Object.hasOwn(existingArticles, normalized)) {
+        return Buffer.from(existingArticles[normalized] ?? '')
+      }
       reads.push(path)
       const seen = (counts.get(path) ?? 0) + 1
       counts.set(path, seen)
@@ -74,7 +83,7 @@ function harness(options: Options = {}) {
       if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
       return bytes
     },
-    exists: (path) => (options.existing ?? []).includes(path) || files.has(path),
+    exists: (path) => files.has(path) || Object.hasOwn(existingArticles, path),
     writeFile: (path, text) => writes.push({ path, text }),
     writeBytes: (path, bytes) => {
       copied.push({ path, bytes })
@@ -83,7 +92,13 @@ function harness(options: Options = {}) {
     write: (stream, text) => {
       ;(stream === 'stdout' ? stdout : stderr).push(text)
     },
-    articles: () => [CORPUS_ARTICLE]
+    articles: () => options.articles ?? [CORPUS_ARTICLE],
+    entryFile: (collection, slug) =>
+      Object.keys(existingArticles).find(
+        (path) =>
+          path === `${CONTENT_DIRS[collection]}/${slug}.md` ||
+          path === `${CONTENT_DIRS[collection]}/${slug}.mdx`
+      )
   }
 
   return {
@@ -120,6 +135,19 @@ test('a dry run prints exactly one JSON plan on stdout and writes nothing', () =
     'commit'
   ])
   expect(h.stderr.join('')).toContain('入库计划')
+})
+
+/** 更新功能之前的创建路径计划，一个字节都不许变：新建文章的计划里没有 mode / diff。 */
+const CREATE_PLAN_JSON =
+  '{"mode":"plan","status":"planned","plan":{"source":{"path":"E:/notes/ticket.md","sha256":"0b0ecb98dbedf0f411fdea04c9e8a4abc423a4fc0b24d9f8e88e836effee5d22","bytes":111},"article":{"collection":"blog","slug":"20261017-a-test-note","targetPath":"src/content/blog/20261017-a-test-note.md","exists":false},"fields":{"title":{"value":"a-test-note","source":"frontmatter"},"description":{"value":"测试用的描述","source":"frontmatter"},"tags":{"value":["测试"],"source":"frontmatter","items":[{"value":"测试","source":"existing"}]},"pubDate":{"value":"2026-10-17","source":"frontmatter"},"slug":{"value":"20261017-a-test-note","source":"title"}},"body":{"h1":{"found":false,"text":null,"equivalentToTitle":false},"preview":"正文。"},"images":[],"warnings":[{"code":"no-h1","message":"正文没有 H1：没有可删除的标题，正文其余内容原样保留。"}],"commit":{"message":"content: publish 20261017-a-test-note"}}}\n'
+
+test('a create-path plan is byte-identical to the plan before updates existed', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  expect(h.stdout.join('')).toBe(CREATE_PLAN_JSON)
 })
 
 test('every field in the plan carries a source from the vocabulary', () => {
@@ -510,14 +538,113 @@ test('apply aborts when the workspace is dirty', () => {
   expect(h.gitCalls).toEqual([['status', '--porcelain', '-z', '-uall']])
 })
 
-test('apply refuses to overwrite an existing article', () => {
-  const h = harness({ existing: [TARGET] })
+const EXISTING_ARTICLE = `---
+title: 'a-test-note'
+description: '测试用的描述'
+pubDate: 2026-10-17
+---
+
+旧正文。
+`
+
+test('a dry run against an existing article plans an update and shows the body diff', () => {
+  const h = harness({ existingArticles: { [TARGET]: EXISTING_ARTICLE } })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  expect(h.writes).toEqual([])
+  const { plan } = h.output()
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-a-test-note',
+    targetPath: TARGET,
+    exists: true,
+    mode: 'update'
+  })
+  expect(plan.body.diff).toBe(
+    [
+      '--- 当前正文',
+      '+++ 覆盖后正文',
+      '@@ -1,1 +1,1 @@',
+      '-旧正文。',
+      '+正文。'
+    ].join('\n')
+  )
+  expect(h.stderr.join('')).toContain('（更新，覆盖已有文章）')
+  expect(h.stderr.join('')).toContain('正文差异（当前 → 覆盖后）')
+  expect(h.stderr.join('')).toContain('-旧正文。')
+})
+
+test('--apply overwrites an existing article and reports an update', () => {
+  const h = harness({ existingArticles: { [TARGET]: EXISTING_ARTICLE } })
 
   const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
 
-  expect(code).toBe(3)
-  expect(h.output().error.message).toContain('已存在')
-  expect(h.writes).toEqual([])
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  const [write] = h.writes
+  expect(write.path).toBe(TARGET)
+  expect(write.text).not.toContain('旧正文。')
+  expect(write.text.endsWith('\n正文。\n')).toBe(true)
+  expect(h.output().status).toBe('ingested')
+  expect(h.output().plan.article.mode).toBe('update')
+  expect(h.stderr.join('')).toContain(`已更新：${TARGET}`)
+})
+
+test('an update excludes the replaced article from the tag vocabulary', () => {
+  const note = `---
+title: 'a-test-note'
+description: '测试用的描述'
+tags: ['独家']
+created: 2026-10-17
+---
+
+正文。
+`
+  const existing = `---
+title: 'a-test-note'
+tags: ['独家']
+---
+
+正文。
+`
+  const h = harness({
+    note,
+    existingArticles: { [TARGET]: existing },
+    // 扫描路径用反斜杠，锁定它与 findEntry 返回的正斜杠路径的归一化。
+    articles: [CORPUS_ARTICLE, TARGET.replace(/\//g, '\\')]
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  const { plan } = h.output()
+  // 独家 只由被覆盖的这篇文章承载：覆盖会删掉最后一个载体，所以它必须报成新增。
+  expect(plan.fields.tags.items).toEqual([{ value: '独家', source: 'new' }])
+  expect(plan.warnings.map((warning) => warning.code)).toContain('tag-not-in-vocabulary')
+})
+
+test('the vocabulary still sees tags carried by articles that are not being replaced', () => {
+  const note = `---
+title: 'a-test-note'
+description: '测试用的描述'
+tags: ['独家']
+created: 2026-10-17
+---
+
+正文。
+`
+  const other = 'src/content/blog/other.md'
+  const h = harness({
+    note,
+    existingArticles: { [other]: `---\ntitle: 'other'\ntags: ['独家']\n---\n\n正文。\n` },
+    articles: [CORPUS_ARTICLE, other]
+  })
+
+  h.run([SOURCE, '--collection', 'blog'])
+
+  expect(h.output().plan.fields.tags.items).toEqual([{ value: '独家', source: 'existing' }])
 })
 
 test('apply re-reads the source and aborts when its bytes changed after the dry run', () => {
