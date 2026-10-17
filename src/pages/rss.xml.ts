@@ -16,10 +16,15 @@ import config from 'virtual:config'
 
 export const prerender = true
 
-// Get dynamic import of images as a map collection
-const imagesGlob = import.meta.glob<{ default: ImageMetadata }>(
-  '/src/content/blog/**/*.{jpeg,jpg,png,gif}' // add more image formats if needed
-)
+// Images inside a post are written as paths relative to that post, but they can
+// live either beside it or in `src/assets/` — the latter is this repo's own
+// convention. RSS needs absolute URLs, so every candidate location has to be
+// resolvable here; globbing only the blog directory made any post whose image
+// lived elsewhere fail the build with `Unable to resolve RSS image`.
+const imagesGlob = import.meta.glob<{ default: ImageMetadata }>([
+  '/src/content/**/*.{jpeg,jpg,png,gif,webp,avif,svg}',
+  '/src/assets/**/*.{jpeg,jpg,png,gif,webp,avif,svg}'
+])
 
 function remarkDropMdxImports() {
   return (tree: Root) => {
