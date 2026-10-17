@@ -183,6 +183,24 @@ test('a Chinese-derived slug is warned about in plan mode and refused by apply',
   expect(applyRun.writes).toEqual([])
 })
 
+test('a Chinese H1 without frontmatter warns in plan mode and refuses apply without --slug', () => {
+  const note = '# 一篇测试笔记\n\n正文。\n'
+
+  const planRun = harness({ note })
+  expect(planRun.run([SOURCE, '--collection', 'blog'])).toBe(0)
+  expect(planRun.output().plan.fields.title).toEqual({ value: '一篇测试笔记', source: 'h1' })
+  expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'slug-not-valid',
+    'missing-description'
+  ])
+
+  const applyRun = harness({ note })
+  expect(applyRun.run([SOURCE, '--collection', 'blog', '--apply'])).toBe(2)
+  expect(applyRun.output().error.message).toContain('--slug')
+  expect(applyRun.writes).toEqual([])
+})
+
 test('--slug overrides a Chinese title so apply writes the English slug', () => {
   const h = harness({ note: NOTE.replace(`title: 'a-test-note'`, `title: '一篇测试笔记'`) })
 
@@ -235,22 +253,32 @@ test('malformed YAML fails before anything is written', () => {
   expect(h.writes).toEqual([])
 })
 
-test('a note without frontmatter is rejected', () => {
-  const h = harness({ note: '只有正文。\n' })
+test('a note without frontmatter plans from the body H1 and today instead of failing', () => {
+  const h = harness({ note: '# a-draft-post\n\n正文。\n' })
 
   const code = h.run([SOURCE, '--collection', 'blog'])
 
-  expect(code).toBe(2)
-  expect(h.output().error.message).toContain('frontmatter')
+  expect(code).toBe(0)
+  const { plan } = h.output()
+  expect(plan.fields.title).toEqual({ value: 'a-draft-post', source: 'h1' })
+  expect(plan.fields.pubDate.source).toBe('today')
+  expect(plan.fields.pubDate.value).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'missing-description'
+  ])
+  expect(h.writes).toEqual([])
 })
 
-test('a note without a title is rejected', () => {
+test('a note with frontmatter but no title falls back to the filename', () => {
   const h = harness({ note: `---\ndescription: '没有标题'\ncreated: 2026-10-17\n---\n\n正文\n` })
 
   const code = h.run([SOURCE, '--collection', 'blog'])
 
-  expect(code).toBe(2)
-  expect(h.output().error.message).toContain('title')
+  expect(code).toBe(0)
+  expect(h.output().plan.fields.title).toEqual({ value: 'ticket', source: 'filename' })
+  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback'])
 })
 
 test('apply writes the frontmatter and the body verbatim to the target article', () => {
@@ -268,6 +296,20 @@ test('apply writes the frontmatter and the body verbatim to the target article',
   expect(write.text.endsWith('\n# 正文里的标题\n\n正文。\n')).toBe(true)
   expect(h.output().status).toBe('ingested')
   expect(h.output().result).toEqual({ targetPath: TARGET })
+})
+
+test('apply writes fallback fields and keeps the body H1 verbatim', () => {
+  const h = harness({ note: '# a-draft-post\n\n正文。\n' })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  const [write] = h.writes
+  expect(write.path).toMatch(/^src\/content\/blog\/\d{8}-a-draft-post\.md$/)
+  expect(write.text).toMatch(/^---\ntitle: 'a-draft-post'\npubDate: \d{4}-\d{2}-\d{2}\n---\n\n/)
+  expect(write.text).not.toContain('description:')
+  expect(write.text.endsWith('\n# a-draft-post\n\n正文。\n')).toBe(true)
 })
 
 test('apply aborts when the workspace is dirty', () => {

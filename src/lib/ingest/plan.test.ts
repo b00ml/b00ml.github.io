@@ -13,13 +13,20 @@ function note(frontmatter: string, body = '正文。\n'): Buffer {
   return Buffer.from(`---\n${frontmatter.trim()}\n---\n\n${body}`)
 }
 
-function planFor(content: Buffer, options: { exists?: boolean; slug?: string } = {}): IngestPlan {
+/** 固定“今天”，让日期兜底的断言不随机器时钟漂移。 */
+const NOW = new Date(2026, 9, 17, 15, 30)
+
+function planFor(
+  content: Buffer,
+  options: { exists?: boolean; slug?: string; path?: string; now?: Date } = {}
+): IngestPlan {
   return buildIngestPlan({
-    path: 'E:/notes/source.md',
+    path: options.path ?? 'E:/notes/source.md',
     content,
     collection: 'blog',
     slug: options.slug,
-    exists: () => options.exists ?? false
+    exists: () => options.exists ?? false,
+    now: () => options.now ?? NOW
   })
 }
 
@@ -77,18 +84,56 @@ test('bytes counts UTF-8 bytes, not characters', () => {
   expect(content.byteLength).toBeGreaterThan(content.toString('utf8').length)
 })
 
-test('a note without frontmatter is rejected instead of guessed', () => {
-  expect(() => planFor(Buffer.from('就是一段正文。\n'))).toThrow('frontmatter')
+test('a note without frontmatter falls back to the body H1 and today', () => {
+  const plan = planFor(Buffer.from('# Hello World\n\n正文。\n'))
+
+  expect(plan.fields.title).toEqual({ value: 'Hello World', source: 'h1' })
+  expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'today' })
+  expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(plan.fields.tags).toEqual({ value: [], source: 'missing' })
+  expect(plan.article.slug).toBe('20261017-hello-world')
+  expect(plan.body.h1).toEqual({ found: true, text: 'Hello World', equivalentToTitle: true })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'missing-description'
+  ])
+})
+
+test('a note without frontmatter and without an H1 takes its title from the filename', () => {
+  const plan = planFor(Buffer.from('就是一段正文。\n'), { path: 'E:/notes/daily-notes.md' })
+
+  expect(plan.fields.title).toEqual({ value: 'daily-notes', source: 'filename' })
+  expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'today' })
+  expect(plan.article.slug).toBe('20261017-daily-notes')
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'missing-description'
+  ])
+  expect(plan.warnings[0].message).toContain('文件名')
 })
 
 test('malformed YAML is rejected', () => {
   expect(() => planFor(Buffer.from(`---\ntitle: 'x'\ntags: [a, b\n---\n\n正文\n`))).toThrow()
 })
 
-test('a note without a title is rejected', () => {
-  const content = note(`description: '只有描述'\ncreated: 2026-10-17`)
+test('frontmatter without a title falls back to the body H1 before the filename', () => {
+  const plan = planFor(note(`description: '只有描述'`, '# 正文里的标题\n\n正文。\n'), {
+    path: 'E:/notes/daily-notes.md'
+  })
 
-  expect(() => planFor(content)).toThrow('title')
+  expect(plan.fields.title).toEqual({ value: '正文里的标题', source: 'h1' })
+  expect(plan.fields.description).toEqual({ value: '只有描述', source: 'frontmatter' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback', 'slug-not-valid'])
+})
+
+test('frontmatter without a title and no H1 falls back to the filename', () => {
+  const plan = planFor(note(`description: '只有描述'`, '正文。\n'), {
+    path: 'E:/notes/daily-notes.md'
+  })
+
+  expect(plan.fields.title).toEqual({ value: 'daily-notes', source: 'filename' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback'])
 })
 
 test('a missing description warns and stays absent instead of being invented', () => {
@@ -105,8 +150,23 @@ test('an empty description is treated as missing', () => {
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
 })
 
-test('a missing date is rejected', () => {
-  expect(() => planFor(note(`title: '没有日期'`))).toThrow('created')
+test('pubDate falls back to the local date when frontmatter has no date', () => {
+  const plan = planFor(note(`title: 'no-date'\ndescription: '描述'`), {
+    now: new Date(2026, 0, 5, 23, 59)
+  })
+
+  expect(plan.fields.pubDate).toEqual({ value: '2026-01-05', source: 'today' })
+  expect(plan.fields.title).toEqual({ value: 'no-date', source: 'frontmatter' })
+  expect(plan.article.slug).toBe('20260105-no-date')
+  expect(plan.warnings).toEqual([])
+})
+
+test('an unusable created falls through to date instead of failing', () => {
+  const plan = planFor(
+    note(`title: 'fall-through'\ndescription: '描述'\ncreated: '不是日期'\ndate: 2026-09-09`)
+  )
+
+  expect(plan.fields.pubDate).toEqual({ value: '2026-09-09', source: 'frontmatter' })
 })
 
 test('a video-summary note using the date field still gets a pubDate', () => {
@@ -186,6 +246,15 @@ test('the body H1 is reported, and equivalence ignores punctuation and case', ()
   expect(different.body.h1).toEqual({ found: true, text: '别的标题', equivalentToTitle: false })
 })
 
+test('an H1 that repeats the filename still wins over the filename', () => {
+  const plan = planFor(Buffer.from('# daily-notes\n\n正文。\n'), {
+    path: 'E:/notes/daily-notes.md'
+  })
+
+  expect(plan.fields.title).toEqual({ value: 'daily-notes', source: 'h1' })
+  expect(plan.body.h1).toEqual({ found: true, text: 'daily-notes', equivalentToTitle: true })
+})
+
 test('the body preview is the body that apply would write, without the H1 being rewritten', () => {
   const plan = planFor(note(`title: '标题'\ncreated: 2026-10-17`, '# 标题\n\n正文。\n'))
 
@@ -208,11 +277,30 @@ test('renderArticle writes single-quoted frontmatter, escapes quotes and keeps t
   expect(article.endsWith('\n---\n\n正文。\n')).toBe(true)
 })
 
+test('renderArticle writes the fallback title and date without inventing a description', () => {
+  const plan = planFor(Buffer.from('# Hello World\n\n正文。\n'))
+
+  const article = renderArticle(plan.fields, plan.body.preview)
+
+  expect(article.startsWith(`---\ntitle: 'Hello World'\n`)).toBe(true)
+  expect(article).toContain(`pubDate: 2026-10-17`)
+  expect(article).not.toContain('description:')
+  expect(article).not.toContain('tags:')
+  expect(article.endsWith('\n# Hello World\n\n正文。\n')).toBe(true)
+})
+
 test('readNote drops the frontmatter block and trims the body edges', () => {
   const parsed = readNote(Buffer.from(`---\ntitle: 'x'\n---\n\n\n正文。\n\n\n`))
 
   expect(parsed.frontmatter).toEqual({ title: 'x' })
   expect(parsed.body).toBe('正文。')
+})
+
+test('readNote treats a note without frontmatter as an empty frontmatter plus the body', () => {
+  const parsed = readNote(Buffer.from('\n\n# 标题\n\n正文。\n\n'))
+
+  expect(parsed.frontmatter).toEqual({})
+  expect(parsed.body).toBe('# 标题\n\n正文。')
 })
 
 test('a UTF-8 BOM does not leak into the planned body', () => {
