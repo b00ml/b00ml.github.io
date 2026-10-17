@@ -65,6 +65,9 @@ draft: false
 
 **发布**：`bun dev` 本地预览 → 提交 → 推 `main`，GitHub Actions 自动构建部署，两三分钟上线。
 
+从别处导入现成文章（例如 Obsidian 笔记）时，字段映射、图片处理和已知失败模式见
+[docs/publish-workflow.md](docs/publish-workflow.md)。
+
 ## 状态
 
 已上线：https://b00ml.github.io/ 。推送到 `main` 即部署。
