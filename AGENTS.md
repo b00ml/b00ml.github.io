@@ -66,3 +66,14 @@ TypeScript 写逻辑，Astro 写页面。提交信息用 Conventional Commits。
 这三条是已经定过的取舍；理由和将来要加时的入口写在 `docs/analytics.md`。
 
 提交前让 `bun run build` 和 `bun test src/` 都过。
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues on `b00ml/b00ml.github.io`, driven by the `gh` CLI. See
+`docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
