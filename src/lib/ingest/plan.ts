@@ -93,9 +93,10 @@ export function readNote(content: Buffer): Note {
  * 把一篇源笔记变成入库计划。日期前缀取 pubDate，短名默认由 title 派生，
  * 调用方可用 `slug` 覆盖（CLI 无法把中文翻译成英文，这一步是判断）。
  * 没有 frontmatter 不算错误：title 依次回退到正文 H1、文件名，pubDate 回退到今天，
- * description 取 `description` 参数再取 frontmatter，都没有就留空只告警、不编造，
- * 标签缺失就是空列表。
- * 目标路径落在对应集合下；正文原样写回，H1 与图片的处理属于后续票据。
+ * description 取 `description` 参数、frontmatter，再取措辞不同的正文 H1 草稿，
+ * 都没有就留空只告警、不编造，标签缺失就是空列表。
+ * 目标路径落在对应集合下；正文第一个 H1 会被删除——页面布局已经把 title 渲染成 h1，
+ * 再留一个就是两个 h1。图片的处理属于后续票据。
  */
 export function buildIngestPlan(input: {
   path: string
@@ -111,9 +112,16 @@ export function buildIngestPlan(input: {
   now?: () => Date
 }): IngestPlan {
   const note = readNote(input.content)
-  const h1 = findH1(note.body)
+  const h1 = splitH1(note.body)
   const title = resolveTitle(note.frontmatter.title, h1.text, filenameTitle(input.path))
-  const description = resolveDescription(input.description, note.frontmatter.description)
+  const equivalentToTitle = h1.text !== null && comparable(h1.text) === comparable(title.value)
+  // 措辞不同才值得留作草稿：等价时它是 title 的重复，删掉就是全部处理。
+  const h1Draft = h1.found && !equivalentToTitle ? h1.text : null
+  const description = resolveDescription(
+    input.description,
+    note.frontmatter.description,
+    h1Draft
+  )
   const tags = readTags(note.frontmatter.tags)
   const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
   const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
@@ -128,6 +136,20 @@ export function buildIngestPlan(input: {
   const warnings: IngestPlan['warnings'] = []
   if (title.source !== 'frontmatter') {
     warnings.push({ code: 'title-fallback', message: titleFallbackMessage(title) })
+  }
+  if (!h1.found) {
+    warnings.push({
+      code: 'no-h1',
+      message: '正文没有 H1：没有可删除的标题，正文其余内容原样保留。'
+    })
+  } else if (!equivalentToTitle) {
+    warnings.push({
+      code: 'h1-differs',
+      message:
+        description.source === 'h1-draft'
+          ? `正文 H1 与 title 措辞不同：${h1.text}；H1 已删除，该文本作为 description 草稿保留，请确认或改写。`
+          : `正文 H1 与 title 措辞不同：${h1.text}；H1 已删除，但 description 已由 ${description.source} 提供，草稿没有覆盖它。`
+    })
   }
   if (slugIssue !== null) {
     warnings.push({
@@ -158,11 +180,8 @@ export function buildIngestPlan(input: {
       slug: { value: slug, source: slugSource }
     },
     body: {
-      h1: {
-        ...h1,
-        equivalentToTitle: h1.text !== null && comparable(h1.text) === comparable(title.value)
-      },
-      preview: note.body
+      h1: { found: h1.found, text: h1.text, equivalentToTitle },
+      preview: h1.without
     },
     images: [],
     warnings,
@@ -226,14 +245,21 @@ function resolveTitle(raw: unknown, h1: string | null, filename: string): Resolv
 }
 
 /**
- * description 的取值：调用方给的 --description 优先于 frontmatter，空白值一律当没有。
- * 内容 schema 里它是必填，写进空串等于写出坏文章；工具自己不生成摘要文字。
+ * description 的取值：调用方给的 --description 优先于 frontmatter，frontmatter 又优先于
+ * 措辞不同的正文 H1 草稿；空白值一律当没有。frontmatter 里的描述是人写的，草稿只是草稿，
+ * 不能反过来盖掉它。内容 schema 里 description 是必填，写进空串等于写出坏文章；
+ * 工具自己不生成摘要文字。
  */
-function resolveDescription(cli: string | undefined, frontmatter: unknown): PlannedField<string> {
+function resolveDescription(
+  cli: string | undefined,
+  frontmatter: unknown,
+  draft: string | null
+): PlannedField<string> {
   const fromCli = cli === undefined ? '' : cli.trim()
   if (fromCli !== '') return { value: fromCli, source: 'cli' }
   const fromNote = optionalText(frontmatter, 'description')
   if (fromNote !== null) return { value: fromNote, source: 'frontmatter' }
+  if (draft !== null) return { value: draft, source: 'h1-draft' }
   return { value: null, source: 'missing' }
 }
 
@@ -254,11 +280,31 @@ function filenameTitle(path: string): string {
   return title
 }
 
-function findH1(body: string): { found: boolean; text: string | null } {
-  const match = /^#[ \t]+(.+?)[ \t]*$/m.exec(body)
-  if (!match) return { found: false, text: null }
+/**
+ * 正文第一个 H1 的文本，以及删掉它之后的正文。删除是默认动作：页面布局已经把 title
+ * 渲染成 h1，正文再留一个就是两个 h1，目录里也会多一个孤零零的根节点。
+ * 删完把接缝处的空行收拾干净——两侧都有空行只留一个，两侧都没有就补一个，
+ * 免得把标题前后的两个块粘成一段；正文首尾的空行一并去掉。
+ */
+function splitH1(body: string): { found: boolean; text: string | null; without: string } {
+  const lines = body.split('\n')
+  const index = lines.findIndex((line) => /^#[ \t]+(.+?)[ \t]*$/.test(line))
+  if (index === -1) return { found: false, text: null, without: body }
+  const match = /^#[ \t]+(.+?)[ \t]*$/.exec(lines[index])
+  if (match === null || match[1].trim() === '') {
+    return { found: false, text: null, without: body }
+  }
   const text = match[1].trim()
-  return text === '' ? { found: false, text: null } : { found: true, text }
+  lines.splice(index, 1)
+  if (index > 0 && index < lines.length) {
+    const blankBefore = lines[index - 1].trim() === ''
+    const blankAfter = lines[index].trim() === ''
+    if (blankBefore && blankAfter) lines.splice(index, 1)
+    else if (!blankBefore && !blankAfter) lines.splice(index, 0, '')
+  }
+  while (lines.length > 0 && lines[0].trim() === '') lines.shift()
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop()
+  return { found: true, text, without: lines.join('\n') }
 }
 
 function comparable(text: string): string {
