@@ -28,6 +28,7 @@ const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|note
 加 --apply 才写进目标文章；写入前会重读源笔记并核对计划里的 sha256。
 --slug 覆盖由标题派生的英文短名，日期前缀仍取 pubDate；slug 不合法时 plan 只告警，--apply 直接中止。
 --description 覆盖源笔记的 description，摘要措辞由调用方决定；缺了它 plan 只告警，--apply 直接中止。
+正文第一个 H1 会被删除；措辞与标题不同的 H1 留作 description 草稿，优先级是 --description → frontmatter → H1 草稿。
 
 退出码：0 成功 · 2 参数、源笔记、slug 或 description 缺失或不合法 · 3 工作区或源笔记状态不合规
 `

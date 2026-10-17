@@ -80,7 +80,7 @@ created: 2026-10-17`,
     preview: '正文第一段。'
   })
   expect(plan.images).toEqual([])
-  expect(plan.warnings).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
   expect(plan.commit).toEqual({ message: 'content: publish 20261017-context-assets' })
 })
 
@@ -115,6 +115,7 @@ test('a note without frontmatter and without an H1 takes its title from the file
   expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
   expect(plan.warnings.map((warning) => warning.code)).toEqual([
     'title-fallback',
+    'no-h1',
     'missing-description'
   ])
   expect(plan.warnings[0].message).toContain('文件名')
@@ -140,14 +141,14 @@ test('frontmatter without a title and no H1 falls back to the filename', () => {
   })
 
   expect(plan.fields.title).toEqual({ value: 'daily-notes', source: 'filename' })
-  expect(plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback'])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback', 'no-h1'])
 })
 
 test('a missing description warns and stays absent instead of being invented', () => {
   const plan = planFor(note(`title: 'note-without-description'\ncreated: 2026-10-13`))
 
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
-  expect(plan.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'missing-description'])
   expect(renderArticle(plan.fields, plan.body.preview)).not.toContain('description:')
 })
 
@@ -163,7 +164,7 @@ test('a supplied description beats the frontmatter one and is reported as cli', 
   })
 
   expect(plan.fields.description).toEqual({ value: '调用方给的摘要', source: 'cli' })
-  expect(plan.warnings).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
   expect(renderArticle(plan.fields, plan.body.preview)).toContain(`description: '调用方给的摘要'`)
 })
 
@@ -177,7 +178,7 @@ test('a supplied description alone satisfies the required field', () => {
 test('a whitespace-only description is treated as absent', () => {
   const blank = planFor(note(`title: 'note'\ncreated: 2026-10-17`), { description: '   ' })
   expect(blank.fields.description).toEqual({ value: null, source: 'missing' })
-  expect(blank.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
+  expect(blank.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'missing-description'])
 
   const fallback = planFor(
     note(`title: 'note'\ndescription: '笔记里的描述'\ncreated: 2026-10-17`),
@@ -194,7 +195,7 @@ test('pubDate falls back to the local date when frontmatter has no date', () => 
   expect(plan.fields.pubDate).toEqual({ value: '2026-01-05', source: 'today' })
   expect(plan.fields.title).toEqual({ value: 'no-date', source: 'frontmatter' })
   expect(plan.article.slug).toBe('20260105-no-date')
-  expect(plan.warnings).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
 })
 
 test('an unusable created falls through to date instead of failing', () => {
@@ -240,7 +241,7 @@ test('a supplied slug replaces the title-derived name in the article, path and c
   })
   expect(plan.fields.slug).toEqual({ value: '20261017-leetcode-first-glance', source: 'cli' })
   expect(plan.commit.message).toBe('content: publish 20261017-leetcode-first-glance')
-  expect(plan.warnings).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
 })
 
 test('an update keeps the supplied slug too', () => {
@@ -259,9 +260,9 @@ test('an illegal supplied slug warns in the plan instead of being fixed silently
       slug
     })
 
-    expect(plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
+    expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'slug-not-valid'])
     expect(plan.fields.slug.source).toBe('cli')
-    expect(plan.warnings[0].message).toContain('--slug')
+    expect(plan.warnings[1].message).toContain('--slug')
   }
 })
 
@@ -269,7 +270,7 @@ test('a Chinese-derived slug is reported as not valid, with the title as its sou
   const plan = planFor(note(`title: '视频笔记'\ndescription: '描述'\ndate: 2026-09-09`))
 
   expect(plan.fields.slug).toEqual({ value: '20260909-视频笔记', source: 'title' })
-  expect(plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'slug-not-valid'])
 })
 
 test('the body H1 is reported, and equivalence ignores punctuation and case', () => {
@@ -282,6 +283,88 @@ test('the body H1 is reported, and equivalence ignores punctuation and case', ()
   expect(different.body.h1).toEqual({ found: true, text: '别的标题', equivalentToTitle: false })
 })
 
+test('an H1 differing from the title is removed and kept as a description draft', () => {
+  const plan = planFor(
+    note(`title: 'Short Title'\ncreated: 2026-10-17`, '# A Longer Title\n\n正文。\n')
+  )
+
+  expect(plan.body.h1).toEqual({
+    found: true,
+    text: 'A Longer Title',
+    equivalentToTitle: false
+  })
+  expect(plan.body.preview).toBe('正文。')
+  expect(plan.fields.description).toEqual({ value: 'A Longer Title', source: 'h1-draft' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['h1-differs'])
+  expect(plan.warnings[0].message).toContain('A Longer Title')
+})
+
+test('an equivalent H1 is removed without leaving a description draft', () => {
+  const plan = planFor(note(`title: 'Title: Test'\ncreated: 2026-10-17`, '# Title Test!\n\n正文。\n'))
+
+  expect(plan.body.preview).toBe('正文。')
+  expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
+})
+
+test('a frontmatter description beats the H1 draft but h1-differs is still reported', () => {
+  const plan = planFor(
+    note(
+      `title: 'Short Title'\ndescription: '人写的描述'\ncreated: 2026-10-17`,
+      '# A Longer Title\n\n正文。\n'
+    )
+  )
+
+  expect(plan.fields.description).toEqual({ value: '人写的描述', source: 'frontmatter' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['h1-differs'])
+})
+
+test('a supplied description beats the H1 draft', () => {
+  const plan = planFor(
+    note(`title: 'Short Title'\ncreated: 2026-10-17`, '# A Longer Title\n\n正文。\n'),
+    { description: '调用方写的摘要' }
+  )
+
+  expect(plan.fields.description).toEqual({ value: '调用方写的摘要', source: 'cli' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['h1-differs'])
+})
+
+test('the H1 is removed wherever it sits in the body', () => {
+  const first = planFor(note(`title: 'T'\ncreated: 2026-10-17`, '# T\n\n正文。\n'))
+  expect(first.body.preview).toBe('正文。')
+
+  const afterQuote = planFor(note(`title: 'T'\ncreated: 2026-10-17`, '> 引用\n\n# T\n\n正文。\n'))
+  expect(afterQuote.body.preview).toBe('> 引用\n\n正文。')
+
+  const afterQuoteWithoutBlank = planFor(
+    note(`title: 'T'\ncreated: 2026-10-17`, '> 引用\n# T\n正文。\n')
+  )
+  expect(afterQuoteWithoutBlank.body.preview).toBe('> 引用\n\n正文。')
+
+  const afterBlankLines = planFor(
+    note(`title: 'T'\ncreated: 2026-10-17`, '第一段。\n\n# T\n\n第二段。\n')
+  )
+  expect(afterBlankLines.body.preview).toBe('第一段。\n\n第二段。')
+})
+
+test('a body that is nothing but an H1 becomes an empty preview', () => {
+  const plan = planFor(note(`title: 'Only Heading'\ncreated: 2026-10-17`, '# Only Heading\n'))
+
+  expect(plan.body.preview).toBe('')
+  expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
+})
+
+test('a body without an H1 warns and is left untouched', () => {
+  const plan = planFor(
+    note(`title: 'No Heading'\ndescription: '描述'\ncreated: 2026-10-17`, '第一段。\n\n第二段。\n')
+  )
+
+  expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
+  expect(plan.body.preview).toBe('第一段。\n\n第二段。')
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
 test('an H1 that repeats the filename still wins over the filename', () => {
   const plan = planFor(Buffer.from('# daily-notes\n\n正文。\n'), {
     path: 'E:/notes/daily-notes.md'
@@ -291,10 +374,10 @@ test('an H1 that repeats the filename still wins over the filename', () => {
   expect(plan.body.h1).toEqual({ found: true, text: 'daily-notes', equivalentToTitle: true })
 })
 
-test('the body preview is the body that apply would write, without the H1 being rewritten', () => {
+test('the body preview is the body that apply would write, with the H1 removed', () => {
   const plan = planFor(note(`title: '标题'\ncreated: 2026-10-17`, '# 标题\n\n正文。\n'))
 
-  expect(plan.body.preview).toBe('# 标题\n\n正文。')
+  expect(plan.body.preview).toBe('正文。')
 })
 
 test('renderArticle writes single-quoted frontmatter, escapes quotes and keeps the body', () => {
@@ -322,7 +405,8 @@ test('renderArticle writes the fallback title and date without inventing a descr
   expect(article).toContain(`pubDate: 2026-10-17`)
   expect(article).not.toContain('description:')
   expect(article).not.toContain('tags:')
-  expect(article.endsWith('\n# Hello World\n\n正文。\n')).toBe(true)
+  expect(article).not.toContain('# Hello World')
+  expect(article.endsWith('\n正文。\n')).toBe(true)
 })
 
 test('readNote drops the frontmatter block and trims the body edges', () => {

@@ -148,7 +148,7 @@ test('--slug flows into the article, its target path and the commit message', ()
   })
   expect(plan.fields.slug).toEqual({ value: '20261017-leetcode-first-glance', source: 'cli' })
   expect(plan.commit.message).toBe('content: publish 20261017-leetcode-first-glance')
-  expect(plan.warnings).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
   expect(h.writes).toEqual([])
 })
 
@@ -159,7 +159,10 @@ test('an illegal --slug warns in plan mode and still returns the plan', () => {
     const code = h.run([SOURCE, '--collection', 'blog', '--slug', slug])
 
     expect(code).toBe(0)
-    expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
+    expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual([
+      'no-h1',
+      'slug-not-valid'
+    ])
   }
 })
 
@@ -183,6 +186,7 @@ test('a Chinese-derived slug is warned about in plan mode and refused by apply',
   expect(planRun.run([SOURCE, '--collection', 'blog'])).toBe(0)
   expect(planRun.output().plan.article.slug).toBe('20261017-一篇测试笔记')
   expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
     'slug-not-valid'
   ])
 
@@ -228,7 +232,31 @@ test('--description beats the frontmatter description in the plan', () => {
 
   expect(code).toBe(0)
   expect(h.output().plan.fields.description).toEqual({ value: '调用方给的摘要', source: 'cli' })
-  expect(h.output().plan.warnings).toEqual([])
+  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
+test('a differing H1 keeps its wording as a description draft in the plan', () => {
+  const h = harness({ note: NOTE_WITHOUT_DESCRIPTION.replace('正文。\n', '# 另一个标题\n\n正文。\n') })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  const { plan } = h.output()
+  expect(plan.body.h1).toEqual({ found: true, text: '另一个标题', equivalentToTitle: false })
+  expect(plan.body.preview).toBe('正文。')
+  expect(plan.fields.description).toEqual({ value: '另一个标题', source: 'h1-draft' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['h1-differs'])
+  expect(h.writes).toEqual([])
+})
+
+test('--description beats the H1 draft without hiding the difference', () => {
+  const h = harness({ note: NOTE_WITHOUT_DESCRIPTION.replace('正文。\n', '# 另一个标题\n\n正文。\n') })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--description', '人写的摘要'])
+
+  expect(code).toBe(0)
+  expect(h.output().plan.fields.description).toEqual({ value: '人写的摘要', source: 'cli' })
+  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['h1-differs'])
 })
 
 test('--description=text is accepted like the separate form', () => {
@@ -256,6 +284,7 @@ test('a missing description warns in plan mode and aborts apply with exit 2', ()
   expect(planRun.run([SOURCE, '--collection', 'blog'])).toBe(0)
   expect(planRun.output().plan.fields.description).toEqual({ value: null, source: 'missing' })
   expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
     'missing-description'
   ])
   expect(planRun.writes).toEqual([])
@@ -272,6 +301,7 @@ test('a whitespace-only --description is treated as missing and refused by apply
   expect(planRun.run([SOURCE, '--collection', 'blog', '--description', '   '])).toBe(0)
   expect(planRun.output().plan.fields.description).toEqual({ value: null, source: 'missing' })
   expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
     'missing-description'
   ])
 
@@ -347,10 +377,13 @@ test('a note with frontmatter but no title falls back to the filename', () => {
 
   expect(code).toBe(0)
   expect(h.output().plan.fields.title).toEqual({ value: 'ticket', source: 'filename' })
-  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback'])
+  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'title-fallback',
+    'no-h1'
+  ])
 })
 
-test('apply writes the frontmatter and the body verbatim to the target article', () => {
+test('apply writes the frontmatter and the body with the H1 removed', () => {
   const h = harness({ note: NOTE.replace('正文。\n', '# 正文里的标题\n\n正文。\n') })
 
   const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
@@ -362,12 +395,13 @@ test('apply writes the frontmatter and the body verbatim to the target article',
   expect(write.text.startsWith(`---\ntitle: 'a-test-note'\n`)).toBe(true)
   expect(write.text).toContain(`pubDate: 2026-10-17`)
   expect(write.text).toContain(`tags: ['测试']`)
-  expect(write.text.endsWith('\n# 正文里的标题\n\n正文。\n')).toBe(true)
+  expect(write.text).not.toContain('# 正文里的标题')
+  expect(write.text.endsWith('\n正文。\n')).toBe(true)
   expect(h.output().status).toBe('ingested')
   expect(h.output().result).toEqual({ targetPath: TARGET })
 })
 
-test('apply writes fallback fields and keeps the body H1 verbatim', () => {
+test('apply writes fallback fields and drops the body H1 that became the title', () => {
   const h = harness({ note: '# a-draft-post\n\n正文。\n' })
 
   const code = h.run([SOURCE, '--collection', 'blog', '--description', '兜底写的摘要', '--apply'])
@@ -379,7 +413,8 @@ test('apply writes fallback fields and keeps the body H1 verbatim', () => {
   expect(write.text).toMatch(
     /^---\ntitle: 'a-draft-post'\ndescription: '兜底写的摘要'\npubDate: \d{4}-\d{2}-\d{2}\n---\n\n/
   )
-  expect(write.text.endsWith('\n# a-draft-post\n\n正文。\n')).toBe(true)
+  expect(write.text).not.toContain('# a-draft-post')
+  expect(write.text.endsWith('\n正文。\n')).toBe(true)
 })
 
 test('apply aborts when the workspace is dirty', () => {
