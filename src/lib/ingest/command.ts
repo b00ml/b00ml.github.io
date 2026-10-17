@@ -11,6 +11,8 @@ export type IngestDeps = {
   read: (path: string) => Buffer
   exists: (path: string) => boolean
   writeFile: (path: string, text: string) => void
+  /** 写二进制：图片附件按字节复制，不能走文本写盘（编码会改字节）。 */
+  writeBytes: (path: string, bytes: Buffer) => void
   write: (stream: 'stdout' | 'stderr', text: string) => void
 }
 
@@ -29,8 +31,10 @@ const USAGE = `用法：bun run ingest <源笔记路径> --collection <blog|note
 --slug 覆盖由标题派生的英文短名，日期前缀仍取 pubDate；slug 不合法时 plan 只告警，--apply 直接中止。
 --description 覆盖源笔记的 description，摘要措辞由调用方决定；缺了它 plan 只告警，--apply 直接中止。
 正文第一个 H1 会被删除；措辞与标题不同的 H1 留作 description 草稿，优先级是 --description → frontmatter → H1 草稿。
+本地图片附件会复制进 src/assets/ 并按 ../../assets/<name>.<ext> 改写引用，文件名去掉中文与时间戳；
+远程图片原地址不动，第三方域名的图片额外告警。找不到本地附件直接中止，不写坏链接。
 
-退出码：0 成功 · 2 参数、源笔记、slug 或 description 缺失或不合法 · 3 工作区或源笔记状态不合规
+退出码：0 成功 · 2 参数、源笔记、附件、slug 或 description 缺失或不合法 · 3 工作区或源笔记状态不合规
 `
 
 class StepFailure extends Error {
@@ -128,7 +132,8 @@ function preparePlan(
       collection,
       slug,
       description,
-      exists: deps.exists
+      exists: deps.exists,
+      read: deps.read
     })
   } catch (error) {
     throw new StepFailure('usage', EXIT.usage, messageOf(error))
@@ -166,7 +171,71 @@ function applyPlan(sourcePath: string, plan: IngestPlan, deps: IngestDeps): void
     )
   }
 
+  // 先落图片再写文章：图片缺失会让构建直接报 image-not-found，宁可留下无人引用的
+  // 附件（清理起来是一目了然的），也不要写出一个引用了不存在图片的文章。
+  copyImages(plan, deps)
   deps.writeFile(plan.article.targetPath, renderArticle(plan.fields, plan.body.preview))
+}
+
+/**
+ * 把本地附件复制进 src/assets/。先按计划里的 sha256 核对源字节，写完再读回来核对，
+ * 中途任何一步对不上都中止：宁可让调用方重跑，也不留一份半对的图片。
+ * 目标已存在且哈希一致说明上次已经搬过，跳过即可——这就是重复 --apply 的幂等性。
+ */
+function copyImages(plan: IngestPlan, deps: IngestDeps): void {
+  const pending: { from: string; to: string; bytes: Buffer; sha256: string }[] = []
+  for (const image of plan.images) {
+    if (image.remote) continue
+    if (deps.exists(image.to)) {
+      if (sha256(deps.read(image.to)) !== image.sha256) {
+        throw new StepFailure(
+          'workspace',
+          EXIT.workspace,
+          `目标图片已存在且内容不同：${image.to}；确认这张图是不是别的笔记用的，或先移走它。`
+        )
+      }
+      continue
+    }
+    let bytes: Buffer
+    try {
+      bytes = deps.read(image.from)
+    } catch (error) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `读不到附件：${image.from}（${messageOf(error)}）；附件可能在生成计划之后被移走了。`
+      )
+    }
+    if (sha256(bytes) !== image.sha256) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `附件在生成计划之后被修改了：${image.from}；请重新运行 dry-run 再执行。`
+      )
+    }
+    pending.push({ from: image.from, to: image.to, bytes, sha256: image.sha256 })
+  }
+
+  for (const file of pending) {
+    deps.writeBytes(file.to, file.bytes)
+    let written: Buffer
+    try {
+      written = deps.read(file.to)
+    } catch (error) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `复制后读不回图片：${file.to}（${messageOf(error)}）。`
+      )
+    }
+    if (written.byteLength !== file.bytes.byteLength || sha256(written) !== file.sha256) {
+      throw new StepFailure(
+        'workspace',
+        EXIT.workspace,
+        `复制后字节与源附件不一致：${file.to}；请检查磁盘与权限后重试。`
+      )
+    }
+  }
 }
 
 function changedPaths(deps: IngestDeps): string[] {
@@ -194,11 +263,24 @@ function planSummary(plan: IngestPlan): string {
     `  描述：${plan.fields.description.value ?? '（缺失）'}`,
     `  标签：${tags.length > 0 ? tags.join('，') : '（无）'}`,
     `  发布：${plan.fields.pubDate.value}`,
+    ...imageLines(plan),
     `  提交信息：${plan.commit.message}`,
     ...plan.warnings.map((warning) => `  告警：${warning.code} — ${warning.message}`),
     '加 --apply 执行。'
   ]
   return `${lines.join('\n')}\n`
+}
+
+function imageLines(plan: IngestPlan): string[] {
+  if (plan.images.length === 0) return ['  图片：（无）']
+  return [
+    `  图片：${plan.images.length} 张`,
+    ...plan.images.map((image) =>
+      image.remote
+        ? `    ${image.from}（远程，保持原样）`
+        : `    ${image.from} → ${image.to}（${image.bytes} 字节）`
+    )
+  ]
 }
 
 type ParsedArgs = {

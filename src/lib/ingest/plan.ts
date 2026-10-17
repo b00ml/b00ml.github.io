@@ -3,6 +3,7 @@ import { parseFrontmatter } from '@astrojs/markdown-remark'
 
 import { CONTENT_DIRS, type ContentCollection } from '../content/entries.ts'
 import { commitMessage } from '../publish/plan.ts'
+import { planImages } from './images.ts'
 
 /** 每个字段值的来源。词表是外部契约，测试和读计划的人都按它断言。 */
 export type FieldSource =
@@ -96,7 +97,8 @@ export function readNote(content: Buffer): Note {
  * description 取 `description` 参数、frontmatter，再取措辞不同的正文 H1 草稿，
  * 都没有就留空只告警、不编造，标签缺失就是空列表。
  * 目标路径落在对应集合下；正文第一个 H1 会被删除——页面布局已经把 title 渲染成 h1，
- * 再留一个就是两个 h1。图片的处理属于后续票据。
+ * 再留一个就是两个 h1。本地图片附件会解析成真实文件、按清洗后的名字记进计划，
+ * 正文引用改成 `../../assets/<name>.<ext>`；远程图片保持原地址只出告警。
  */
 export function buildIngestPlan(input: {
   path: string
@@ -108,6 +110,8 @@ export function buildIngestPlan(input: {
   description?: string
   /** 目标文章是否已存在，由调用方提供（命令层读文件系统，测试用假实现）。 */
   exists: (targetPath: string) => boolean
+  /** 读文件字节：解析附件、算哈希都用它；命令层读文件系统，测试注入假实现。 */
+  read: (path: string) => Buffer
   /** 今天的日期，用于 pubDate 兜底；命令层不传就取系统时钟，测试注入固定时间。 */
   now?: () => Date
 }): IngestPlan {
@@ -126,6 +130,15 @@ export function buildIngestPlan(input: {
   const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
   const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
   const slug = `${pubDate.value.replace(/-/g, '')}-${name}`
+  // 图片在删 H1 之前处理：报错行号对着源笔记，正文改写的顺序也与读者看到的一致。
+  const imagePlan = planImages({
+    body: note.body,
+    notePath: input.path,
+    name,
+    collection: input.collection,
+    exists: input.exists,
+    read: input.read
+  })
   const slugSource: FieldSource = input.slug === undefined ? 'title' : 'cli'
   // 调用方给的值本身也要合法：`-name` 拼上日期前缀会变成 `20261017--name`，
   // 只看最终 slug 就漏掉了首尾连字符。
@@ -181,10 +194,10 @@ export function buildIngestPlan(input: {
     },
     body: {
       h1: { found: h1.found, text: h1.text, equivalentToTitle },
-      preview: h1.without
+      preview: splitH1(imagePlan.body).without
     },
-    images: [],
-    warnings,
+    images: imagePlan.images,
+    warnings: [...warnings, ...imagePlan.warnings],
     commit: {
       message: commitMessage(
         [{ slug, change: exists ? 'modified' : 'added' }],

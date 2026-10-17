@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { dirname, join, resolve } from 'node:path'
 
 import {
   buildIngestPlan,
@@ -16,6 +17,11 @@ function note(frontmatter: string, body = '正文。\n'): Buffer {
 /** 固定“今天”，让日期兜底的断言不随机器时钟漂移。 */
 const NOW = new Date(2026, 9, 17, 15, 30)
 
+/** 附件路径与实现里的算法一致：先 resolve 笔记路径，再从它所在目录拼。 */
+function beside(notePath: string, ...parts: string[]): string {
+  return join(dirname(resolve(notePath)), ...parts)
+}
+
 function planFor(
   content: Buffer,
   options: {
@@ -24,15 +30,27 @@ function planFor(
     description?: string
     path?: string
     now?: Date
+    /** 附件文件：绝对路径 → 字节。 */
+    files?: Record<string, Buffer>
+    /** 额外存在的目录（例如笔记库根的 .obsidian）。 */
+    dirs?: string[]
   } = {}
 ): IngestPlan {
+  const files = options.files ?? {}
+  const dirs = options.dirs ?? []
   return buildIngestPlan({
     path: options.path ?? 'E:/notes/source.md',
     content,
     collection: 'blog',
     slug: options.slug,
     description: options.description,
-    exists: () => options.exists ?? false,
+    exists: (path) =>
+      Object.hasOwn(files, path) || dirs.includes(path) || (options.exists ?? false),
+    read: (path) => {
+      const bytes = files[path]
+      if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
+      return bytes
+    },
     now: () => options.now ?? NOW
   })
 }
@@ -445,4 +463,194 @@ test('sha256 matches the known empty and abc vectors', () => {
   expect(sha256(Buffer.from('abc'))).toBe(
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
   )
+})
+
+const IMAGE = Buffer.from('fake webp bytes')
+
+function imageNote(body: string, title = 'demo'): Buffer {
+  return note(`title: '${title}'\ndescription: '描述'\ncreated: 2026-10-17`, body)
+}
+
+test('a wiki embed becomes a Markdown image and its attachment is planned', () => {
+  const path = 'E:/notes/source.md'
+  const plan = planFor(imageNote('正文。\n\n![[demo-1791295556765.webp]]\n'), {
+    path,
+    files: { [beside(path, 'demo-1791295556765.webp')]: IMAGE }
+  })
+
+  expect(plan.body.preview).toBe('正文。\n\n![demo](../../assets/demo.webp)')
+  expect(plan.body.preview).not.toContain('![[')
+  expect(plan.images).toEqual([
+    {
+      from: beside(path, 'demo-1791295556765.webp'),
+      to: 'src/assets/demo.webp',
+      bytes: IMAGE.byteLength,
+      sha256: sha256(IMAGE),
+      remote: false
+    }
+  ])
+})
+
+test('wiki size pipes are dropped and non-numeric pipes become the alt text', () => {
+  const path = 'E:/notes/source.md'
+  const file = beside(path, 'shot-1791295556765.png')
+  const plan = planFor(
+    imageNote('![[shot-1791295556765.png|395x733]]\n\n![[shot-1791295556765.png|一张截图]]\n'),
+    { path, files: { [file]: IMAGE } }
+  )
+
+  expect(plan.body.preview).toBe(
+    '![shot](../../assets/shot.png)\n\n![一张截图](../../assets/shot.png)'
+  )
+  expect(plan.images.length).toBe(1)
+})
+
+test('a standard Markdown image pointing at a local file is copied too', () => {
+  const path = 'E:/notes/source.md'
+  const file = beside(path, 'screens', 'shot.png')
+  const plan = planFor(imageNote('![红色方框](screens/shot.png)\n'), {
+    path,
+    files: { [file]: IMAGE }
+  })
+
+  expect(plan.body.preview).toBe('![红色方框](../../assets/shot.png)')
+  expect(plan.images).toEqual([
+    {
+      from: file,
+      to: 'src/assets/shot.png',
+      bytes: IMAGE.byteLength,
+      sha256: sha256(IMAGE),
+      remote: false
+    }
+  ])
+})
+
+test('remote images are left alone and get the spec warnings', () => {
+  const plan = planFor(imageNote('![第三方](https://example.com/x.png)\n'))
+
+  expect(plan.body.preview).toBe('![第三方](https://example.com/x.png)')
+  expect(plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
+    'remote-image',
+    'third-party-image'
+  ])
+  expect(plan.images).toEqual([
+    {
+      from: 'https://example.com/x.png',
+      to: 'https://example.com/x.png',
+      bytes: 0,
+      sha256: '',
+      remote: true
+    }
+  ])
+})
+
+test('an image on the site domain is remote but not third-party', () => {
+  const plan = planFor(imageNote('![本站](https://b00ml.github.io/x.png)\n'))
+
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'remote-image'])
+})
+
+test('a missing attachment is an actionable error, not a broken link', () => {
+  const path = 'E:/notes/source.md'
+
+  expect(() => planFor(imageNote('正文。\n\n![[gone.webp]]\n'), { path })).toThrow(
+    `找不到附件：gone.webp（正文第 3 行）；已查找：${beside(path, 'gone.webp')}`
+  )
+})
+
+test('13-digit and 14-digit timestamps are stripped from attachment names', () => {
+  const path = 'E:/notes/source.md'
+  const paste = beside(path, 'Pasted image 20260902183943.png')
+  const double = beside(path, 'demo-1791295556765-1791295556766.webp')
+  const body =
+    '![[Pasted image 20260902183943.png]]\n\n![[demo-1791295556765-1791295556766.webp]]\n'
+
+  const plan = planFor(imageNote(body), { path, files: { [paste]: IMAGE, [double]: IMAGE } })
+
+  expect(plan.images.map((image) => image.to)).toEqual([
+    'src/assets/pasted-image.png',
+    'src/assets/demo.webp'
+  ])
+})
+
+test('two attachments with the same cleaned name get distinct targets', () => {
+  const path = 'E:/notes/source.md'
+  const first = beside(path, 'a', 'pic-1791295556765.png')
+  const second = beside(path, 'b', 'pic-1791295556766.png')
+  const body = '![一](a/pic-1791295556765.png)\n\n![二](b/pic-1791295556766.png)\n'
+  const plan = planFor(imageNote(body), { path, files: { [first]: IMAGE, [second]: IMAGE } })
+
+  expect(plan.images.map((image) => image.to)).toEqual([
+    'src/assets/pic.png',
+    'src/assets/pic-2.png'
+  ])
+})
+
+test('an attachment name without Latin letters falls back to the article name', () => {
+  const path = 'E:/notes/source.md'
+  const first = beside(path, '项目演示-1791295556765.webp')
+  const second = beside(path, '项目演示-1791295556766.webp')
+  const body = '![[项目演示-1791295556765.webp]]\n\n![[项目演示-1791295556766.webp]]\n'
+  const plan = planFor(imageNote(body, 'demo-note'), {
+    path,
+    files: { [first]: IMAGE, [second]: IMAGE }
+  })
+
+  expect(plan.images.map((image) => image.to)).toEqual([
+    'src/assets/demo-note.webp',
+    'src/assets/demo-note-2.webp'
+  ])
+})
+
+test('attachments resolve beside the note, in attachments/, and at the vault root', () => {
+  const path = 'E:/vault/开发侧/note.md'
+  const first = beside(path, 'attachments', 'a-1791295556765.png')
+  const second = beside(path, 'attachments', 'b-1791295556766.png')
+  const third = beside(path, '..', 'root-1791295556767.png')
+  const body =
+    '![[a-1791295556765.png]]\n\n![b](attachments/b-1791295556766.png)\n\n![c](/root-1791295556767.png)\n'
+
+  const plan = planFor(imageNote(body), {
+    path,
+    files: { [first]: IMAGE, [second]: IMAGE, [third]: IMAGE },
+    dirs: [beside(path, '..', '.obsidian')]
+  })
+
+  expect(plan.images.map((image) => image.from)).toEqual([first, second, third])
+})
+
+test('the same attachment referenced twice is planned once', () => {
+  const path = 'E:/notes/source.md'
+  const file = beside(path, 'same-1791295556765.png')
+  const body = '![[same-1791295556765.png]]\n\n![[same-1791295556765.png]]\n'
+  const plan = planFor(imageNote(body), { path, files: { [file]: IMAGE } })
+
+  expect(plan.images.length).toBe(1)
+  expect(plan.body.preview).toBe(
+    '![same](../../assets/same.png)\n\n![same](../../assets/same.png)'
+  )
+})
+
+test('inline data images are neither copied nor reported', () => {
+  const data = '![图片](data:image/svg+xml;base64,AAAA)'
+  const plan = planFor(imageNote(`${data}\n`))
+
+  expect(plan.body.preview).toBe(data)
+  expect(plan.images).toEqual([])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1'])
+})
+
+test('images are rewritten before the H1 is removed', () => {
+  const path = 'E:/notes/source.md'
+  const file = beside(path, 'pic-1791295556765.png')
+  const plan = planFor(
+    note(
+      `title: 'demo'\ndescription: '描述'\ncreated: 2026-10-17`,
+      '# demo\n\n![[pic-1791295556765.png]]\n'
+    ),
+    { path, files: { [file]: IMAGE } }
+  )
+
+  expect(plan.body.preview).toBe('![pic](../../assets/pic.png)')
 })

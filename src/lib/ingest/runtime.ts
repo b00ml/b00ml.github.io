@@ -13,6 +13,7 @@ export function createDeps(): IngestDeps {
     read: (path) => readFileSync(path),
     exists: (path) => existsSync(path),
     writeFile: (path, text) => writeFileSync(path, text, 'utf8'),
+    writeBytes: (path, bytes) => writeFileSync(path, bytes),
     write: (stream, text) => {
       ;(stream === 'stdout' ? process.stdout : process.stderr).write(text)
     }
