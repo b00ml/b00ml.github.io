@@ -10,6 +10,7 @@
     "build": "node scripts/clean-content-cache.mjs && astro build",
     "build:checked": "bun run check && bun run build",
     "publish": "node scripts/publish.mjs",
+    "ingest": "node scripts/ingest.mjs",
     "preview": "astro preview",
     "sync": "astro sync",
     "check": "astro-pure check && astro check",

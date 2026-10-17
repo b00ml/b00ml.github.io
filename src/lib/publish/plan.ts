@@ -38,7 +38,10 @@ export function buildPlan(input: {
  * 提交信息由改动本身决定，不看模型发挥：文章用 `content: <verb> <slug>[, <slug>]`，
  * 纯文档改动用 `docs: ...`。这样同一份工作区重跑永远得到同一条信息。
  */
-export function commitMessage(articles: PlannedArticle[], files: ChangedFile[]): string {
+export function commitMessage(
+  articles: Pick<PlannedArticle, 'slug' | 'change'>[],
+  files: Pick<ChangedFile, 'path'>[]
+): string {
   if (articles.length > 0) {
     const verb = articles.some((article) => article.change === 'added')
       ? 'publish'
