@@ -1,7 +1,8 @@
 # AGENTS.md
 
 peik1 的个人博客：全静态的 Astro 5 站点，中文写作，面向国内技术同行与潜在雇主。
-仓库公开在 https://github.com/b00ml/blog，直接上游是 https://github.com/joyehuang/blog（Apache-2.0）。
+仓库是 https://github.com/b00ml/b00ml.github.io（公开），线上是 https://b00ml.github.io/，
+直接上游是 https://github.com/joyehuang/blog（Apache-2.0）。
 
 ## 先跑起来
 
@@ -12,7 +13,7 @@ peik1 的个人博客：全静态的 Astro 5 站点，中文写作，面向国�
 
 命令都在 `package.json`，日常用到的是 `bun dev` / `bun run build` / `bun run check` / `bun test`。
 
-## 两个会浪费你半天的坑
+## 三个会浪费你半天的坑
 
 **`bun run build` 必须先清 Astro 内容缓存。** Astro 5 把内容集合条目缓存进
 `node_modules/.astro/data-store.json`，源文件删掉后它不剔除对应条目——构建会继续产出那个页面，
@@ -22,6 +23,12 @@ peik1 的个人博客：全静态的 Astro 5 站点，中文写作，面向国�
 
 **`trailingSlash` 是 `'never'`。** 文章 URL 是 `/blog/<slug>`，没有结尾斜杠；改它要连带改 canonical
 和站内链接。
+
+**deploy 慢不代表构建慢。** `build` 一般 30 秒内完成；`deploy` 由 `actions/deploy-pages` 轮询 Pages
+服务端，正常也只要几十秒，但偶发会卡在 `updating_pages` 整整十分钟直到超时。那是 Pages 的偶发状态
+卡死，**重跑即可**（`gh run rerun <id> --repo b00ml/b00ml.github.io`）。不要为此加依赖缓存、加
+`paths:` 过滤，或改成本地构建再推 `gh-pages`：构建根本不是瓶颈，这些改动只会给一个已经够快的流程
+增加出错面。
 
 ## 结构
 
@@ -47,7 +54,11 @@ TypeScript 写逻辑，Astro 写页面。提交信息用 Conventional Commits。
 格式沿用仓库现有风格——两空格缩进、单引号、无分号、100 列、import 排序，`bun run format` 会替你处理。
 测试放在被测代码旁边，命名 `*.test.ts`，用 `bun:test`。
 
-`main` 目前不会自动部署。接上部署平台之后它就是生产分支，那之后改动走 feature 分支 + PR。
+`main` 就是生产分支：推送即发布。
+
+图片用相对路径，从文章所在目录算起——文章在 `src/content/notes/`、图片放 `src/assets/`，所以写
+`../../assets/x.png`。路径写错构建会直接报 `image-not-found`，不会静默出坏图。正文图片自动带
+`zoomable` class（medium-zoom 灯箱）。`cover` 字段 schema 接受，但当前界面没有渲染它，暂时不用管。
 
 ## 边界
 

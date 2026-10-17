@@ -36,7 +36,10 @@ src/site.config.ts   站点标题、导航、搜索、灯箱等全局配置
 
 ## 写一篇
 
-文件名就是 slug，URL 是 `/blog/<slug>`（`trailingSlash: 'never'`，没有结尾斜杠）。
+新建一个 Markdown 文件放进对应集合目录，**文件名就是 slug**。文章在 `src/content/notes/`、
+`src/content/blog/` 或 `src/content/product/` 下，URL 是 `/notes/<slug>`（`trailingSlash: 'never'`，
+没有结尾斜杠）。建议用日期前缀 + 英文短名：`20261014-astro-blog-first-look.md`。
+
 三个集合共用同一份 frontmatter schema：
 
 ```yaml
@@ -49,12 +52,25 @@ draft: false
 ---
 ```
 
+- 必填 `title`、`description`、`pubDate`；可选 `updatedDate`、`tags`、`draft`、`cover`
+- `tags` 会自动去重并转成小写，标签聚合页在 `/notes/tags/<tag>`
+- `draft: true` 的文章只在 `bun dev` 本地出现，**不会进生产构建**
+- `cover` 字段 schema 接受，但当前界面没有渲染它，暂时不用管
+
 集合按主题分而不是长度：Product 收产品类的拆解与取舍，Blog 收其余完整长文，Notes 收短、快的记录。
+
+**图片**用相对路径，从文章所在目录算起：文章在 `src/content/notes/`、图片放 `src/assets/`，所以写
+`../../assets/x.png`。路径写错构建会直接失败（`image-not-found`），不会静默出坏图。正文图片会自动
+带上 `zoomable` class，点击放大由 medium-zoom 提供。
+
+**发布**：`bun dev` 本地预览 → 提交 → 推 `main`，GitHub Actions 自动构建部署，两三分钟上线。
 
 ## 状态
 
-功能完整，尚未部署。域名未定，`astro.config.ts` 的 `site` 仍是占位值 `https://peik1.example.com`，
-它会影响 sitemap、RSS 和 canonical，上线前需要替换。
+已上线：https://b00ml.github.io/ 。推送到 `main` 即部署。
+
+Projects 与 About 仍是占位页，其余板块已有真实内容。域名未买，目前用 GitHub Pages 默认域名；
+将来绑自定义域名只需加一条 DNS 记录，再把 `astro.config.ts` 的 `site` 改掉。
 
 ## 来源与许可
 
