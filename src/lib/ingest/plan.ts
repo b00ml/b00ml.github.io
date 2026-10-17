@@ -93,7 +93,8 @@ export function readNote(content: Buffer): Note {
  * 把一篇源笔记变成入库计划。日期前缀取 pubDate，短名默认由 title 派生，
  * 调用方可用 `slug` 覆盖（CLI 无法把中文翻译成英文，这一步是判断）。
  * 没有 frontmatter 不算错误：title 依次回退到正文 H1、文件名，pubDate 回退到今天，
- * description 缺失只告警、不编造，标签缺失就是空列表。
+ * description 取 `description` 参数再取 frontmatter，都没有就留空只告警、不编造，
+ * 标签缺失就是空列表。
  * 目标路径落在对应集合下；正文原样写回，H1 与图片的处理属于后续票据。
  */
 export function buildIngestPlan(input: {
@@ -102,6 +103,8 @@ export function buildIngestPlan(input: {
   collection: ContentCollection
   /** 调用方给的英文短名，覆盖由 title 派生的短名；日期前缀不跟着变。 */
   slug?: string
+  /** 调用方给的一句摘要，覆盖源笔记的 description；摘要措辞是判断，工具不生成。 */
+  description?: string
   /** 目标文章是否已存在，由调用方提供（命令层读文件系统，测试用假实现）。 */
   exists: (targetPath: string) => boolean
   /** 今天的日期，用于 pubDate 兜底；命令层不传就取系统时钟，测试注入固定时间。 */
@@ -110,7 +113,7 @@ export function buildIngestPlan(input: {
   const note = readNote(input.content)
   const h1 = findH1(note.body)
   const title = resolveTitle(note.frontmatter.title, h1.text, filenameTitle(input.path))
-  const description = optionalText(note.frontmatter.description, 'description')
+  const description = resolveDescription(input.description, note.frontmatter.description)
   const tags = readTags(note.frontmatter.tags)
   const pubDate = readPubDate(note.frontmatter, input.now ?? (() => new Date()))
   const name = input.slug === undefined ? deriveSlug(title.value) : input.slug
@@ -132,10 +135,11 @@ export function buildIngestPlan(input: {
       message: `slug 不合法：${slugIssue}；请用 --slug 指定英文短名后重新运行（例如 --slug leetcode-first-glance）。`
     })
   }
-  if (description === null) {
+  if (description.source === 'missing') {
     warnings.push({
       code: 'missing-description',
-      message: '源笔记没有 description；不编造，入库前请补一句摘要。'
+      message:
+        '缺少 description：源笔记没有，--description 也没有给出非空值；不编造，请用 --description 提供一句摘要。'
     })
   }
 
@@ -148,7 +152,7 @@ export function buildIngestPlan(input: {
     article: { collection: input.collection, slug, targetPath, exists },
     fields: {
       title,
-      description: { value: description, source: description === null ? 'missing' : 'frontmatter' },
+      description,
       tags: { value: tags ?? [], source: tags === null ? 'missing' : 'frontmatter' },
       pubDate,
       slug: { value: slug, source: slugSource }
@@ -219,6 +223,18 @@ function resolveTitle(raw: unknown, h1: string | null, filename: string): Resolv
   if (frontmatter !== null) return { value: frontmatter, source: 'frontmatter' }
   if (h1 !== null) return { value: h1, source: 'h1' }
   return { value: filename, source: 'filename' }
+}
+
+/**
+ * description 的取值：调用方给的 --description 优先于 frontmatter，空白值一律当没有。
+ * 内容 schema 里它是必填，写进空串等于写出坏文章；工具自己不生成摘要文字。
+ */
+function resolveDescription(cli: string | undefined, frontmatter: unknown): PlannedField<string> {
+  const fromCli = cli === undefined ? '' : cli.trim()
+  if (fromCli !== '') return { value: fromCli, source: 'cli' }
+  const fromNote = optionalText(frontmatter, 'description')
+  if (fromNote !== null) return { value: fromNote, source: 'frontmatter' }
+  return { value: null, source: 'missing' }
 }
 
 /**

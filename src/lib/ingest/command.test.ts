@@ -14,6 +14,15 @@ created: 2026-10-17
 正文。
 `
 
+/** 没有 description 的源笔记，用来验证「告警但拒绝写盘」。 */
+const NOTE_WITHOUT_DESCRIPTION = `---
+title: 'a-test-note'
+created: 2026-10-17
+---
+
+正文。
+`
+
 type Options = {
   note?: string
   status?: string
@@ -212,6 +221,66 @@ test('--slug overrides a Chinese title so apply writes the English slug', () => 
   expect(h.output().result).toEqual({ targetPath: 'src/content/blog/20261017-ticket-note.md' })
 })
 
+test('--description beats the frontmatter description in the plan', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--description', '调用方给的摘要'])
+
+  expect(code).toBe(0)
+  expect(h.output().plan.fields.description).toEqual({ value: '调用方给的摘要', source: 'cli' })
+  expect(h.output().plan.warnings).toEqual([])
+})
+
+test('--description=text is accepted like the separate form', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--description=等号形式的摘要'])
+
+  expect(code).toBe(0)
+  expect(h.output().plan.fields.description).toEqual({ value: '等号形式的摘要', source: 'cli' })
+})
+
+test('a description from the flag alone lets apply write the article', () => {
+  const h = harness({ note: NOTE_WITHOUT_DESCRIPTION })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--description', '一句摘要', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  expect(h.writes[0].text).toContain(`description: '一句摘要'\n`)
+  expect(h.writes[0].text).toContain(`pubDate: 2026-10-17\n`)
+})
+
+test('a missing description warns in plan mode and aborts apply with exit 2', () => {
+  const planRun = harness({ note: NOTE_WITHOUT_DESCRIPTION })
+  expect(planRun.run([SOURCE, '--collection', 'blog'])).toBe(0)
+  expect(planRun.output().plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'missing-description'
+  ])
+  expect(planRun.writes).toEqual([])
+
+  const applyRun = harness({ note: NOTE_WITHOUT_DESCRIPTION })
+  expect(applyRun.run([SOURCE, '--collection', 'blog', '--apply'])).toBe(2)
+  expect(applyRun.output().error.step).toBe('usage')
+  expect(applyRun.output().error.message).toContain('--description')
+  expect(applyRun.writes).toEqual([])
+})
+
+test('a whitespace-only --description is treated as missing and refused by apply', () => {
+  const planRun = harness({ note: NOTE_WITHOUT_DESCRIPTION })
+  expect(planRun.run([SOURCE, '--collection', 'blog', '--description', '   '])).toBe(0)
+  expect(planRun.output().plan.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(planRun.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'missing-description'
+  ])
+
+  const applyRun = harness({ note: NOTE_WITHOUT_DESCRIPTION })
+  expect(applyRun.run([SOURCE, '--collection', 'blog', '--description', ' ', '--apply'])).toBe(2)
+  expect(applyRun.output().error.message).toContain('--description')
+  expect(applyRun.writes).toEqual([])
+})
+
 test('a missing --collection is a usage error and no article is written', () => {
   const h = harness()
 
@@ -301,14 +370,15 @@ test('apply writes the frontmatter and the body verbatim to the target article',
 test('apply writes fallback fields and keeps the body H1 verbatim', () => {
   const h = harness({ note: '# a-draft-post\n\n正文。\n' })
 
-  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+  const code = h.run([SOURCE, '--collection', 'blog', '--description', '兜底写的摘要', '--apply'])
 
   expect(code).toBe(0)
   expect(h.writes.length).toBe(1)
   const [write] = h.writes
   expect(write.path).toMatch(/^src\/content\/blog\/\d{8}-a-draft-post\.md$/)
-  expect(write.text).toMatch(/^---\ntitle: 'a-draft-post'\npubDate: \d{4}-\d{2}-\d{2}\n---\n\n/)
-  expect(write.text).not.toContain('description:')
+  expect(write.text).toMatch(
+    /^---\ntitle: 'a-draft-post'\ndescription: '兜底写的摘要'\npubDate: \d{4}-\d{2}-\d{2}\n---\n\n/
+  )
   expect(write.text.endsWith('\n# a-draft-post\n\n正文。\n')).toBe(true)
 })
 

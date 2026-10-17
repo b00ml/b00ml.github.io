@@ -18,13 +18,20 @@ const NOW = new Date(2026, 9, 17, 15, 30)
 
 function planFor(
   content: Buffer,
-  options: { exists?: boolean; slug?: string; path?: string; now?: Date } = {}
+  options: {
+    exists?: boolean
+    slug?: string
+    description?: string
+    path?: string
+    now?: Date
+  } = {}
 ): IngestPlan {
   return buildIngestPlan({
     path: options.path ?? 'E:/notes/source.md',
     content,
     collection: 'blog',
     slug: options.slug,
+    description: options.description,
     exists: () => options.exists ?? false,
     now: () => options.now ?? NOW
   })
@@ -148,6 +155,35 @@ test('an empty description is treated as missing', () => {
   const plan = planFor(note(`title: '空描述'\ndescription: '  '\ncreated: 2026-10-13`))
 
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
+})
+
+test('a supplied description beats the frontmatter one and is reported as cli', () => {
+  const plan = planFor(note(`title: 'note'\ndescription: '笔记里的描述'\ncreated: 2026-10-17`), {
+    description: '调用方给的摘要'
+  })
+
+  expect(plan.fields.description).toEqual({ value: '调用方给的摘要', source: 'cli' })
+  expect(plan.warnings).toEqual([])
+  expect(renderArticle(plan.fields, plan.body.preview)).toContain(`description: '调用方给的摘要'`)
+})
+
+test('a supplied description alone satisfies the required field', () => {
+  const plan = planFor(Buffer.from('# Note\n\n正文。\n'), { description: '一句摘要', slug: 'note' })
+
+  expect(plan.fields.description).toEqual({ value: '一句摘要', source: 'cli' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['title-fallback'])
+})
+
+test('a whitespace-only description is treated as absent', () => {
+  const blank = planFor(note(`title: 'note'\ncreated: 2026-10-17`), { description: '   ' })
+  expect(blank.fields.description).toEqual({ value: null, source: 'missing' })
+  expect(blank.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
+
+  const fallback = planFor(
+    note(`title: 'note'\ndescription: '笔记里的描述'\ncreated: 2026-10-17`),
+    { description: '\t ' }
+  )
+  expect(fallback.fields.description).toEqual({ value: '笔记里的描述', source: 'frontmatter' })
 })
 
 test('pubDate falls back to the local date when frontmatter has no date', () => {
