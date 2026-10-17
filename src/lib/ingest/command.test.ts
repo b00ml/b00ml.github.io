@@ -29,6 +29,8 @@ type Options = {
   note?: string
   status?: string
   existing?: string[]
+  /** 站内已有标签；默认「测试」已在词表里，与 NOTE 的 tags 对齐。传 [] 即空语料。 */
+  vocabulary?: string[]
   /** 第二次读源笔记时返回的内容，用来模拟 dry-run 之后源文件被改。 */
   after?: string
   /** 磁盘上已有的文件：绝对路径 → 字节；本地附件也放这里。 */
@@ -36,6 +38,9 @@ type Options = {
   /** 第二次读这个附件时换成这些字节，用来模拟计划之后附件被改。 */
   changed?: { path: string; bytes: Buffer }
 }
+
+/** 词表扫描时读到的那篇站内文章；读它不计入源笔记的读取次数。 */
+const CORPUS_ARTICLE = 'src/content/blog/existing.md'
 
 function harness(options: Options = {}) {
   const stdout: string[] = []
@@ -46,6 +51,8 @@ function harness(options: Options = {}) {
   const gitCalls: string[][] = []
   const files = new Map<string, Buffer>(Object.entries(options.files ?? {}))
   const counts = new Map<string, number>()
+  const tags = options.vocabulary ?? ['测试']
+  const corpus = `---\ntitle: 'existing'\ntags: [${tags.map((tag) => `'${tag}'`).join(', ')}]\n---\n\n正文。\n`
   let current = options.note ?? NOTE
 
   const deps: IngestDeps = {
@@ -54,6 +61,7 @@ function harness(options: Options = {}) {
       return options.status ?? ''
     },
     read: (path) => {
+      if (path === CORPUS_ARTICLE) return Buffer.from(corpus)
       reads.push(path)
       const seen = (counts.get(path) ?? 0) + 1
       counts.set(path, seen)
@@ -74,7 +82,8 @@ function harness(options: Options = {}) {
     },
     write: (stream, text) => {
       ;(stream === 'stdout' ? stdout : stderr).push(text)
-    }
+    },
+    articles: () => [CORPUS_ARTICLE]
   }
 
   return {
@@ -152,6 +161,57 @@ test('the planned article is the collection directory plus date-prefixed slug', 
   expect(plan.fields.title).toEqual({ value: 'a-test-note', source: 'frontmatter' })
   expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'frontmatter' })
   expect(plan.commit.message).toBe('content: publish 20261017-a-test-note')
+})
+
+test('the plan marks each tag existing or new and warns for the new ones', () => {
+  const note = `---
+title: 'tag-note'
+description: '描述'
+tags: ['AI', 'AI', '新标签']
+created: 2026-10-17
+---
+
+# tag-note
+
+正文。
+`
+  const h = harness({ note, vocabulary: ['ai'] })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  const { plan } = h.output()
+  expect(plan.fields.tags).toEqual({
+    value: ['ai', '新标签'],
+    source: 'frontmatter',
+    items: [
+      { value: 'ai', source: 'existing' },
+      { value: '新标签', source: 'new' }
+    ]
+  })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['tag-not-in-vocabulary'])
+  expect(plan.warnings[0].message).toContain('/tags/新标签')
+  expect(h.stderr.join('')).toContain('标签：ai（已有），新标签（新增）')
+})
+
+test('a new tag is a warning, not a gate: apply still writes the lowercased tags', () => {
+  const note = `---
+title: 'tag-note'
+description: '描述'
+tags: ['AI', 'AI', '新标签']
+created: 2026-10-17
+---
+
+正文。
+`
+  const h = harness({ note, vocabulary: [] })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  expect(h.writes[0].text).toContain(`tags: ['ai', '新标签']`)
+  expect(h.output().status).toBe('ingested')
 })
 
 test('--slug flows into the article, its target path and the commit message', () => {
