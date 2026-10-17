@@ -48,6 +48,9 @@ peik1 的个人博客：全静态的 Astro 5 站点，中文写作，面向国�
 三个集合按**主题**分，不按长度：Product 收产品类的拆解与取舍，Blog 收其余完整长文，
 Notes 收短、快、可以未完成的记录。
 
+入库与发布用 `bun run ingest` / `bun run publish`；前置条件、参数与失败模式见
+[docs/publish-tool.md](docs/publish-tool.md)。
+
 ## 规范
 
 TypeScript 写逻辑，Astro 写页面。提交信息用 Conventional Commits。

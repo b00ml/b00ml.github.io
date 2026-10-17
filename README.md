@@ -63,10 +63,11 @@ draft: false
 `../../assets/x.png`。路径写错构建会直接失败（`image-not-found`），不会静默出坏图。正文图片会自动
 带上 `zoomable` class，点击放大由 medium-zoom 提供。
 
-**发布**：`bun dev` 本地预览 → 提交 → 推 `main`，GitHub Actions 自动构建部署，两三分钟上线。
+**发布**：`bun run publish` 会构建、测试、提交、推送并等待 Pages 部署；完整说明见
+[docs/publish-tool.md](docs/publish-tool.md)。
 
-从别处导入现成文章（例如 Obsidian 笔记）时，字段映射、图片处理和已知失败模式见
-[docs/publish-workflow.md](docs/publish-workflow.md)。
+从别处导入现成文章（例如 Obsidian 笔记）用 `bun run ingest`；字段映射、图片处理和已知失败模式见
+[docs/publish-tool.md](docs/publish-tool.md)。
 
 ## 状态
 
