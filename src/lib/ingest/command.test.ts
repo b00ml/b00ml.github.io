@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
+import { join } from 'node:path'
 
 import { runIngest, type IngestDeps } from './command'
+import { sha256 } from './plan'
 
 const SOURCE = 'E:/notes/ticket.md'
 const TARGET = 'src/content/blog/20261017-a-test-note.md'
@@ -29,14 +31,21 @@ type Options = {
   existing?: string[]
   /** 第二次读源笔记时返回的内容，用来模拟 dry-run 之后源文件被改。 */
   after?: string
+  /** 磁盘上已有的文件：绝对路径 → 字节；本地附件也放这里。 */
+  files?: Record<string, Buffer>
+  /** 第二次读这个附件时换成这些字节，用来模拟计划之后附件被改。 */
+  changed?: { path: string; bytes: Buffer }
 }
 
 function harness(options: Options = {}) {
   const stdout: string[] = []
   const stderr: string[] = []
   const writes: { path: string; text: string }[] = []
+  const copied: { path: string; bytes: Buffer }[] = []
   const reads: string[] = []
   const gitCalls: string[][] = []
+  const files = new Map<string, Buffer>(Object.entries(options.files ?? {}))
+  const counts = new Map<string, number>()
   let current = options.note ?? NOTE
 
   const deps: IngestDeps = {
@@ -46,12 +55,23 @@ function harness(options: Options = {}) {
     },
     read: (path) => {
       reads.push(path)
-      if (path !== SOURCE) throw new Error(`ENOENT: ${path}`)
-      if (reads.length > 1 && options.after !== undefined) current = options.after
-      return Buffer.from(current)
+      const seen = (counts.get(path) ?? 0) + 1
+      counts.set(path, seen)
+      if (path === SOURCE) {
+        if (seen > 1 && options.after !== undefined) current = options.after
+        return Buffer.from(current)
+      }
+      if (seen > 1 && options.changed?.path === path) return options.changed.bytes
+      const bytes = files.get(path)
+      if (bytes === undefined) throw new Error(`ENOENT: ${path}`)
+      return bytes
     },
-    exists: (path) => (options.existing ?? []).includes(path),
+    exists: (path) => (options.existing ?? []).includes(path) || files.has(path),
     writeFile: (path, text) => writes.push({ path, text }),
+    writeBytes: (path, bytes) => {
+      copied.push({ path, bytes })
+      files.set(path, bytes)
+    },
     write: (stream, text) => {
       ;(stream === 'stdout' ? stdout : stderr).push(text)
     }
@@ -59,6 +79,7 @@ function harness(options: Options = {}) {
 
   return {
     writes,
+    copied,
     reads,
     gitCalls,
     stdout,
@@ -477,4 +498,121 @@ test('--help prints usage to stdout and exits zero', () => {
 
   expect(code).toBe(0)
   expect(h.stdout.join('')).toContain('用法')
+})
+
+const ASSET = Buffer.from('fake webp bytes')
+const ATTACHMENT = join('E:/notes', 'demo-1791295556765.webp')
+
+function noteWithImage(body: string): string {
+  return `---\ntitle: 'a-test-note'\ndescription: '测试用的描述'\ncreated: 2026-10-17\n---\n\n${body}`
+}
+
+test('--apply copies local attachments and writes ../../assets references', () => {
+  const h = harness({
+    note: noteWithImage('正文。\n\n![[demo-1791295556765.webp]]\n'),
+    files: { [ATTACHMENT]: ASSET }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.copied).toEqual([{ path: 'src/assets/demo.webp', bytes: ASSET }])
+  expect(h.writes.length).toBe(1)
+  const [write] = h.writes
+  expect(write.path).toBe(TARGET)
+  expect(write.text).toContain('![demo](../../assets/demo.webp)')
+  expect(write.text).not.toContain('![[')
+  expect(h.output().plan.images).toEqual([
+    {
+      from: ATTACHMENT,
+      to: 'src/assets/demo.webp',
+      bytes: ASSET.byteLength,
+      sha256: sha256(ASSET),
+      remote: false
+    }
+  ])
+})
+
+test('a dry run lists the images it would copy', () => {
+  const h = harness({
+    note: noteWithImage('![[demo-1791295556765.webp]]\n'),
+    files: { [ATTACHMENT]: ASSET }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  expect(h.copied).toEqual([])
+  expect(h.writes).toEqual([])
+  expect(h.stderr.join('')).toContain('图片：1 张')
+  expect(h.stderr.join('')).toContain(`${ATTACHMENT} → src/assets/demo.webp`)
+})
+
+test('--apply skips an attachment that is already copied with the same bytes', () => {
+  const h = harness({
+    note: noteWithImage('![[demo-1791295556765.webp]]\n'),
+    files: { [ATTACHMENT]: ASSET, 'src/assets/demo.webp': ASSET }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.copied).toEqual([])
+  expect(h.writes.length).toBe(1)
+})
+
+test('--apply refuses to overwrite a different file at the same asset path', () => {
+  const h = harness({
+    note: noteWithImage('![[demo-1791295556765.webp]]\n'),
+    files: { [ATTACHMENT]: ASSET, 'src/assets/demo.webp': Buffer.from('another image') }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.message).toContain('目标图片已存在')
+  expect(h.copied).toEqual([])
+  expect(h.writes).toEqual([])
+})
+
+test('--apply aborts when an attachment changed after the dry run', () => {
+  const h = harness({
+    note: noteWithImage('![[demo-1791295556765.webp]]\n'),
+    files: { [ATTACHMENT]: ASSET },
+    changed: { path: ATTACHMENT, bytes: Buffer.from('changed bytes') }
+  })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.message).toContain('附件在生成计划之后被修改')
+  expect(h.copied).toEqual([])
+  expect(h.writes).toEqual([])
+})
+
+test('a missing attachment is a usage error and writes nothing', () => {
+  const h = harness({ note: noteWithImage('正文。\n\n![[gone.webp]]\n') })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.step).toBe('usage')
+  expect(h.output().error.message).toContain('找不到附件：gone.webp')
+  expect(h.writes).toEqual([])
+  expect(h.stdout.length).toBe(1)
+})
+
+test('--apply leaves remote images alone and records them as remote', () => {
+  const h = harness({ note: noteWithImage('![第三方](https://example.com/x.png)\n') })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.copied).toEqual([])
+  expect(h.writes[0].text).toContain('![第三方](https://example.com/x.png)')
+  expect(h.output().plan.warnings.map((warning) => warning.code)).toEqual([
+    'no-h1',
+    'remote-image',
+    'third-party-image'
+  ])
 })
