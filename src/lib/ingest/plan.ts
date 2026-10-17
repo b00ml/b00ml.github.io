@@ -14,6 +14,8 @@ export type FieldSource =
   | 'missing'
   | 'existing'
   | 'new'
+  | 'title'
+  | 'cli'
 
 /** 告警码。词表是外部契约，后续票据往里加，不改已有含义。 */
 export type WarningCode =
@@ -23,6 +25,7 @@ export type WarningCode =
   | 'tag-not-in-vocabulary'
   | 'no-h1'
   | 'h1-differs'
+  | 'slug-not-valid'
 
 export type PlannedField<T> = {
   value: T | null
@@ -55,6 +58,7 @@ export type IngestPlan = {
     description: PlannedField<string>
     tags: PlannedField<string[]>
     pubDate: PlannedField<string>
+    slug: PlannedField<string>
   }
   body: PlannedBody
   images: PlannedImage[]
@@ -85,13 +89,16 @@ export function readNote(content: Buffer): Note {
 }
 
 /**
- * 把一篇源笔记变成入库计划。slug 由 title 派生、日期前缀取 pubDate，
+ * 把一篇源笔记变成入库计划。日期前缀取 pubDate，短名默认由 title 派生，
+ * 调用方可用 `slug` 覆盖（CLI 无法把中文翻译成英文，这一步是判断）。
  * 目标路径落在对应集合下；正文原样写回，H1 与图片的处理属于后续票据。
  */
 export function buildIngestPlan(input: {
   path: string
   content: Buffer
   collection: ContentCollection
+  /** 调用方给的英文短名，覆盖由 title 派生的短名；日期前缀不跟着变。 */
+  slug?: string
   /** 目标文章是否已存在，由调用方提供（命令层读文件系统，测试用假实现）。 */
   exists: (targetPath: string) => boolean
 }): IngestPlan {
@@ -100,18 +107,28 @@ export function buildIngestPlan(input: {
   const description = optionalText(note.frontmatter.description, 'description')
   const tags = readTags(note.frontmatter.tags)
   const pubDate = readPubDate(note.frontmatter)
-  const slug = `${pubDate.replace(/-/g, '')}-${deriveSlug(title)}`
+  const name = input.slug === undefined ? deriveSlug(title) : input.slug
+  const slug = `${pubDate.replace(/-/g, '')}-${name}`
+  const slugSource: FieldSource = input.slug === undefined ? 'title' : 'cli'
+  // 调用方给的值本身也要合法：`-name` 拼上日期前缀会变成 `20261017--name`，
+  // 只看最终 slug 就漏掉了首尾连字符。
+  const slugIssue =
+    (input.slug === undefined ? null : issueWithSlug(input.slug)) ?? issueWithSlug(slug)
   const targetPath = `${CONTENT_DIRS[input.collection]}/${slug}.md`
   const exists = input.exists(targetPath)
-  const warnings: IngestPlan['warnings'] =
-    description === null
-      ? [
-          {
-            code: 'missing-description',
-            message: '源笔记没有 description；不编造，入库前请补一句摘要。'
-          }
-        ]
-      : []
+  const warnings: IngestPlan['warnings'] = []
+  if (slugIssue !== null) {
+    warnings.push({
+      code: 'slug-not-valid',
+      message: `slug 不合法：${slugIssue}；请用 --slug 指定英文短名后重新运行（例如 --slug leetcode-first-glance）。`
+    })
+  }
+  if (description === null) {
+    warnings.push({
+      code: 'missing-description',
+      message: '源笔记没有 description；不编造，入库前请补一句摘要。'
+    })
+  }
 
   return {
     source: {
@@ -124,7 +141,8 @@ export function buildIngestPlan(input: {
       title: { value: title, source: 'frontmatter' },
       description: { value: description, source: description === null ? 'missing' : 'frontmatter' },
       tags: { value: tags ?? [], source: tags === null ? 'missing' : 'frontmatter' },
-      pubDate: { value: pubDate, source: 'frontmatter' }
+      pubDate: { value: pubDate, source: 'frontmatter' },
+      slug: { value: slug, source: slugSource }
     },
     body: { h1: findH1(note.body, title), preview: note.body },
     images: [],
@@ -165,6 +183,15 @@ export function deriveSlug(title: string): string {
     .replace(/^-+|-+$/g, '')
   if (!slug) throw new Error(`无法从标题派生 slug：${title}`)
   return slug
+}
+
+/** slug 的合法性：非空、仅小写字母数字和连字符、不以连字符开头或结尾、最多 80 字符。 */
+function issueWithSlug(value: string): string | null {
+  if (value.length === 0) return '它为空'
+  if (!/^[a-z0-9-]+$/.test(value)) return `只能包含小写字母、数字和连字符：${value}`
+  if (value.startsWith('-') || value.endsWith('-')) return `不能以连字符开头或结尾：${value}`
+  if (value.length > 80) return `超过 80 个字符（${value.length}）：${value}`
+  return null
 }
 
 export function sha256(content: Buffer): string {

@@ -13,18 +13,19 @@ function note(frontmatter: string, body = '正文。\n'): Buffer {
   return Buffer.from(`---\n${frontmatter.trim()}\n---\n\n${body}`)
 }
 
-function planFor(content: Buffer, options: { exists?: boolean } = {}): IngestPlan {
+function planFor(content: Buffer, options: { exists?: boolean; slug?: string } = {}): IngestPlan {
   return buildIngestPlan({
     path: 'E:/notes/source.md',
     content,
     collection: 'blog',
+    slug: options.slug,
     exists: () => options.exists ?? false
   })
 }
 
 test('a note with full frontmatter becomes a seven-section plan', () => {
   const content = note(
-    `title: '上下文资产'
+    `title: 'context-assets'
 description: '把上下文攒起来'
 tags: ['AI', '知识管理']
 created: 2026-10-17`,
@@ -49,15 +50,16 @@ created: 2026-10-17`,
   })
   expect(plan.article).toEqual({
     collection: 'blog',
-    slug: '20261017-上下文资产',
-    targetPath: 'src/content/blog/20261017-上下文资产.md',
+    slug: '20261017-context-assets',
+    targetPath: 'src/content/blog/20261017-context-assets.md',
     exists: false
   })
   expect(plan.fields).toEqual({
-    title: { value: '上下文资产', source: 'frontmatter' },
+    title: { value: 'context-assets', source: 'frontmatter' },
     description: { value: '把上下文攒起来', source: 'frontmatter' },
     tags: { value: ['AI', '知识管理'], source: 'frontmatter' },
-    pubDate: { value: '2026-10-17', source: 'frontmatter' }
+    pubDate: { value: '2026-10-17', source: 'frontmatter' },
+    slug: { value: '20261017-context-assets', source: 'title' }
   })
   expect(plan.body).toEqual({
     h1: { found: false, text: null, equivalentToTitle: false },
@@ -65,7 +67,7 @@ created: 2026-10-17`,
   })
   expect(plan.images).toEqual([])
   expect(plan.warnings).toEqual([])
-  expect(plan.commit).toEqual({ message: 'content: publish 20261017-上下文资产' })
+  expect(plan.commit).toEqual({ message: 'content: publish 20261017-context-assets' })
 })
 
 test('bytes counts UTF-8 bytes, not characters', () => {
@@ -90,7 +92,7 @@ test('a note without a title is rejected', () => {
 })
 
 test('a missing description warns and stays absent instead of being invented', () => {
-  const plan = planFor(note(`title: '没有描述的笔记'\ncreated: 2026-10-13`))
+  const plan = planFor(note(`title: 'note-without-description'\ncreated: 2026-10-13`))
 
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
   expect(plan.warnings.map((warning) => warning.code)).toEqual(['missing-description'])
@@ -126,6 +128,52 @@ test('an existing target is marked and planned as an update', () => {
 
   expect(plan.article.exists).toBe(true)
   expect(plan.commit.message).toBe('content: update 20261017-已有文章')
+})
+
+test('a supplied slug replaces the title-derived name in the article, path and commit', () => {
+  const plan = planFor(
+    note(`title: '真正会刷 LeetCode 的人'\ndescription: '描述'\ncreated: 2026-10-17`),
+    { slug: 'leetcode-first-glance' }
+  )
+
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-leetcode-first-glance',
+    targetPath: 'src/content/blog/20261017-leetcode-first-glance.md',
+    exists: false
+  })
+  expect(plan.fields.slug).toEqual({ value: '20261017-leetcode-first-glance', source: 'cli' })
+  expect(plan.commit.message).toBe('content: publish 20261017-leetcode-first-glance')
+  expect(plan.warnings).toEqual([])
+})
+
+test('an update keeps the supplied slug too', () => {
+  const plan = planFor(note(`title: '中文标题'\ncreated: 2026-10-17`), {
+    exists: true,
+    slug: 'existing-post'
+  })
+
+  expect(plan.commit.message).toBe('content: update 20261017-existing-post')
+})
+
+test('an illegal supplied slug warns in the plan instead of being fixed silently', () => {
+  const cases = ['Ticket', 'has space', '-leading', 'a'.repeat(81), '']
+  for (const slug of cases) {
+    const plan = planFor(note(`title: '中文标题'\ndescription: '描述'\ncreated: 2026-10-17`), {
+      slug
+    })
+
+    expect(plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
+    expect(plan.fields.slug.source).toBe('cli')
+    expect(plan.warnings[0].message).toContain('--slug')
+  }
+})
+
+test('a Chinese-derived slug is reported as not valid, with the title as its source', () => {
+  const plan = planFor(note(`title: '视频笔记'\ndescription: '描述'\ndate: 2026-09-09`))
+
+  expect(plan.fields.slug).toEqual({ value: '20260909-视频笔记', source: 'title' })
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['slug-not-valid'])
 })
 
 test('the body H1 is reported, and equivalence ignores punctuation and case', () => {
