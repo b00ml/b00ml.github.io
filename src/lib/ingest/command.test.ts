@@ -1,0 +1,261 @@
+import { expect, test } from 'bun:test'
+
+import { runIngest, type IngestDeps } from './command'
+
+const SOURCE = 'E:/notes/ticket.md'
+const TARGET = 'src/content/blog/20261017-一篇测试笔记.md'
+const NOTE = `---
+title: '一篇测试笔记'
+description: '测试用的描述'
+tags: ['测试']
+created: 2026-10-17
+---
+
+正文。
+`
+
+type Options = {
+  note?: string
+  status?: string
+  existing?: string[]
+  /** 第二次读源笔记时返回的内容，用来模拟 dry-run 之后源文件被改。 */
+  after?: string
+}
+
+function harness(options: Options = {}) {
+  const stdout: string[] = []
+  const stderr: string[] = []
+  const writes: { path: string; text: string }[] = []
+  const reads: string[] = []
+  const gitCalls: string[][] = []
+  let current = options.note ?? NOTE
+
+  const deps: IngestDeps = {
+    git: (args) => {
+      gitCalls.push(args)
+      return options.status ?? ''
+    },
+    read: (path) => {
+      reads.push(path)
+      if (path !== SOURCE) throw new Error(`ENOENT: ${path}`)
+      if (reads.length > 1 && options.after !== undefined) current = options.after
+      return Buffer.from(current)
+    },
+    exists: (path) => (options.existing ?? []).includes(path),
+    writeFile: (path, text) => writes.push({ path, text }),
+    write: (stream, text) => {
+      ;(stream === 'stdout' ? stdout : stderr).push(text)
+    }
+  }
+
+  return {
+    writes,
+    reads,
+    gitCalls,
+    stdout,
+    stderr,
+    run: (argv: string[]) => runIngest(argv, deps),
+    output: () => JSON.parse(stdout.join(''))
+  }
+}
+
+test('a dry run prints exactly one JSON plan on stdout and writes nothing', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(0)
+  expect(h.stdout.length).toBe(1)
+  expect(h.stdout[0].endsWith('\n')).toBe(true)
+  expect(h.writes).toEqual([])
+  const out = h.output()
+  expect(out.mode).toBe('plan')
+  expect(out.status).toBe('planned')
+  expect(Object.keys(out.plan)).toEqual([
+    'source',
+    'article',
+    'fields',
+    'body',
+    'images',
+    'warnings',
+    'commit'
+  ])
+  expect(h.stderr.join('')).toContain('入库计划')
+})
+
+test('every field in the plan carries a source from the vocabulary', () => {
+  const h = harness()
+
+  h.run([SOURCE, '--collection', 'blog'])
+
+  const { fields } = h.output().plan
+  const vocabulary = [
+    'h1',
+    'frontmatter',
+    'filename',
+    'today',
+    'h1-draft',
+    'missing',
+    'existing',
+    'new'
+  ]
+  for (const field of Object.values(fields) as { value: unknown; source: string }[]) {
+    expect(vocabulary).toContain(field.source)
+    expect(field).toHaveProperty('value')
+  }
+})
+
+test('the planned article is the collection directory plus date-prefixed slug', () => {
+  const h = harness()
+
+  h.run([SOURCE, '--collection', 'blog'])
+
+  const { plan } = h.output()
+  expect(plan.article).toEqual({
+    collection: 'blog',
+    slug: '20261017-一篇测试笔记',
+    targetPath: TARGET,
+    exists: false
+  })
+  expect(plan.fields.title).toEqual({ value: '一篇测试笔记', source: 'frontmatter' })
+  expect(plan.fields.pubDate).toEqual({ value: '2026-10-17', source: 'frontmatter' })
+  expect(plan.commit.message).toBe('content: publish 20261017-一篇测试笔记')
+})
+
+test('a missing --collection is a usage error and no article is written', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE])
+
+  expect(code).toBe(2)
+  expect(h.output().error.step).toBe('usage')
+  expect(h.output().error.message).toContain('--collection')
+  expect(h.writes).toEqual([])
+})
+
+test('an unknown collection is rejected instead of guessed', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'posts'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.step).toBe('usage')
+  expect(h.output().error.message).toContain('posts')
+  expect(h.writes).toEqual([])
+})
+
+test('an unreadable source is a usage error that names the path', () => {
+  const h = harness()
+
+  const code = h.run(['E:/notes/missing.md', '--collection', 'blog'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.message).toContain('读不到源笔记')
+  expect(h.writes).toEqual([])
+})
+
+test('malformed YAML fails before anything is written', () => {
+  const h = harness({ note: `---\ntitle: 'x'\ntags: [a, b\n---\n\n正文\n` })
+
+  const code = h.run([SOURCE, '--collection', 'notes', '--apply'])
+
+  expect(code).toBe(2)
+  expect(h.writes).toEqual([])
+})
+
+test('a note without frontmatter is rejected', () => {
+  const h = harness({ note: '只有正文。\n' })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.message).toContain('frontmatter')
+})
+
+test('a note without a title is rejected', () => {
+  const h = harness({ note: `---\ndescription: '没有标题'\ncreated: 2026-10-17\n---\n\n正文\n` })
+
+  const code = h.run([SOURCE, '--collection', 'blog'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.message).toContain('title')
+})
+
+test('apply writes the frontmatter and the body verbatim to the target article', () => {
+  const h = harness({ note: NOTE.replace('正文。\n', '# 正文里的标题\n\n正文。\n') })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(0)
+  expect(h.writes.length).toBe(1)
+  const [write] = h.writes
+  expect(write.path).toBe(TARGET)
+  expect(write.text.startsWith(`---\ntitle: '一篇测试笔记'\n`)).toBe(true)
+  expect(write.text).toContain(`pubDate: 2026-10-17`)
+  expect(write.text).toContain(`tags: ['测试']`)
+  expect(write.text.endsWith('\n# 正文里的标题\n\n正文。\n')).toBe(true)
+  expect(h.output().status).toBe('ingested')
+  expect(h.output().result).toEqual({ targetPath: TARGET })
+})
+
+test('apply aborts when the workspace is dirty', () => {
+  const h = harness({ status: ' M src/pages/index.astro\0' })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.step).toBe('workspace')
+  expect(h.output().error.message).toContain('src/pages/index.astro')
+  expect(h.writes).toEqual([])
+  expect(h.gitCalls).toEqual([['status', '--porcelain', '-z', '-uall']])
+})
+
+test('apply refuses to overwrite an existing article', () => {
+  const h = harness({ existing: [TARGET] })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.output().error.message).toContain('已存在')
+  expect(h.writes).toEqual([])
+})
+
+test('apply re-reads the source and aborts when its bytes changed after the dry run', () => {
+  const h = harness({ after: NOTE.replace('正文。', '正文改了。') })
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  expect(code).toBe(3)
+  expect(h.reads.length).toBe(2)
+  expect(h.output().error.step).toBe('workspace')
+  expect(h.output().error.message).toContain('重新运行')
+  expect(h.writes).toEqual([])
+})
+
+test('a failed apply still reports the plan it had built', () => {
+  const h = harness({ status: ' M src/pages/index.astro\0' })
+
+  h.run([SOURCE, '--collection', 'blog', '--apply'])
+
+  const out = h.output()
+  expect(out.status).toBe('failed')
+  expect(out.plan.article.slug).toBe('20261017-一篇测试笔记')
+})
+
+test('unknown flags are usage errors', () => {
+  const h = harness()
+
+  const code = h.run([SOURCE, '--collection', 'blog', '--force'])
+
+  expect(code).toBe(2)
+  expect(h.output().error.message).toContain('--force')
+})
+
+test('--help prints usage to stdout and exits zero', () => {
+  const h = harness()
+
+  const code = h.run(['--help'])
+
+  expect(code).toBe(0)
+  expect(h.stdout.join('')).toContain('用法')
+})
