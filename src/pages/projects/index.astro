@@ -1,20 +1,113 @@
 ---
-export const prerender = true
-import { Button } from 'astro-pure/user'
-import PageLayout from '@/layouts/CommonPage.astro'
+import type { CollectionEntry } from 'astro:content'
+import { getCollection } from 'astro:content'
 
-const headings = [
-  { depth: 2, slug: 'open-source', text: 'Open Source' },
-  { depth: 2, slug: 'side-projects', text: 'Side Projects' }
-]
+import PageLayout from '@/layouts/BaseLayout.astro'
+import { Button } from 'astro-pure/user'
+import { sectionMetadata } from '@/lib/seo/metadata'
+import { STATUS_LABELS, STATUS_NOTE, STATUS_ORDER, type ProjectStatus } from '@/lib/projects/status'
+
+/**
+ * Projects - /projects
+ * Artefacts rather than posts: one card per thing that was built, grouped by the
+ * state it is in. The point of the page is not to look busy but to let a reader
+ * decide, in two lines, whether this project is worth opening.
+ */
+export const prerender = true
+
+const entries = (await getCollection('projects')).filter((entry) => !entry.data.draft)
+
+const groups = STATUS_ORDER.map((status) => ({
+  status,
+  note: STATUS_NOTE[status],
+  entries: entries
+    .filter((entry) => entry.data.status === status)
+    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
+})).filter((group) => group.entries.length > 0)
+
+const meta: { title: string; description: string } = sectionMetadata('/projects') ?? {
+  title: '项目',
+  description: 'peik1 做过的项目。'
+}
+
+function metaLine(entry: CollectionEntry<'projects'>): string {
+  return [entry.data.period, entry.data.role].filter(Boolean).join(' · ')
+}
 ---
 
-<PageLayout title='Projects' {headings}>
-  <h2 id='open-source'>Open Source</h2>
-  <p>开源项目待补。</p>
+<PageLayout {meta}>
+  <Button title='Back' href='/' style='back' />
 
-  <h2 id='side-projects'>Side Projects</h2>
-  <p>自己做的产品与实验待补。</p>
+  <main class='mt-6 lg:mt-10'>
+    <div id='content-header' class='animate'>
+      <div class='mb-3 flex items-center gap-3'>
+        <div class='rounded-lg bg-muted/50 p-3'>
+          <span class='text-2xl'>🗂️</span>
+        </div>
+        <div>
+          <h1 class='text-3xl font-medium'>项目</h1>
+          <p class='text-sm text-muted-foreground'>做过的、还在做的，以及它们的卡点</p>
+        </div>
+      </div>
+      <p class='max-w-3xl text-muted-foreground'>
+        这里放我做过的项目：一句话说清它是什么，我负责哪一段，关键取舍是什么，现在是什么状态。
+        想看我拆别人的产品，去 <a href='/product' class='underline underline-offset-4'>Product</a>；
+        想看我最近在想什么，去 <a href='/blog' class='underline underline-offset-4'>Blog</a>。
+      </p>
+    </div>
 
-  <Button title='GitHub' class='w-fit' href='https://github.com/b00ml' style='ahead' />
+    {
+      groups.map((group) => (
+        <section class='mt-12 animate' aria-labelledby={`group-${group.status}`}>
+          <div class='mb-4 flex items-baseline gap-3'>
+            <h2 id={`group-${group.status}`} class='text-lg font-semibold'>
+              {STATUS_LABELS[group.status as ProjectStatus]}
+            </h2>
+            <span class='text-xs text-muted-foreground'>
+              {group.entries.length} 个 · {group.note}
+            </span>
+          </div>
+
+          <ul class='grid gap-4 sm:grid-cols-2'>
+            {group.entries.map((entry) => (
+              <li>
+                <a
+                  href={`/projects/${entry.id}`}
+                  class='group flex h-full flex-col gap-2 rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'
+                  data-astro-prefetch
+                >
+                  <div class='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
+                    <span class='rounded-md bg-muted px-2 py-0.5'>
+                      {STATUS_LABELS[entry.data.status as ProjectStatus]}
+                    </span>
+                    {metaLine(entry) && <span>{metaLine(entry)}</span>}
+                  </div>
+
+                  <h3 class='text-lg font-medium leading-tight group-hover:text-foreground'>
+                    {entry.data.title}
+                  </h3>
+                  <p class='text-sm leading-6 text-muted-foreground'>{entry.data.description}</p>
+
+                  {entry.data.stack.length > 0 && (
+                    <div class='mt-auto flex flex-wrap gap-1.5 pt-2 text-xs text-muted-foreground'>
+                      {entry.data.stack.map((item: string) => (
+                        <span class='rounded-md border border-border px-2 py-0.5'>{item}</span>
+                      ))}
+                    </div>
+                  )}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+
+    {entries.length === 0 && <p class='mt-12'>还没有项目记录。</p>}
+
+    <div class='mt-12 flex flex-wrap items-center gap-3 border-t border-border pt-6'>
+      <Button title='GitHub' class='w-fit' href='https://github.com/b00ml' style='ahead' />
+      <p class='text-sm text-muted-foreground'>代码大多在这里；没开源的，文里会说明为什么。</p>
+    </div>
+  </main>
 </PageLayout>

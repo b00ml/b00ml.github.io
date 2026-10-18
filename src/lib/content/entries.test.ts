@@ -21,7 +21,8 @@ test('the collection mapping is the source directory', () => {
   expect(CONTENT_DIRS).toEqual({
     blog: 'src/content/blog',
     notes: 'src/content/notes',
-    product: 'src/content/product'
+    product: 'src/content/product',
+    projects: 'src/content/projects'
   })
 })
 

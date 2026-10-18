@@ -11,7 +11,8 @@ import { parseFrontmatter } from '@astrojs/markdown-remark'
 export const CONTENT_DIRS = {
   blog: 'src/content/blog',
   notes: 'src/content/notes',
-  product: 'src/content/product'
+  product: 'src/content/product',
+  projects: 'src/content/projects'
 } as const
 
 export type ContentCollection = keyof typeof CONTENT_DIRS

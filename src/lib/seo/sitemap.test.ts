@@ -8,7 +8,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const COLLECTIONS = [
   ['blog', 'src/content/blog'],
   ['notes', 'src/content/notes'],
-  ['product', 'src/content/product']
+  ['product', 'src/content/product'],
+  ['projects', 'src/content/projects']
 ] as const
 
 describe('sitemap lastmod', () => {

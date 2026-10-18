@@ -44,4 +44,23 @@ const product = defineCollection({
   schema: entrySchema
 })
 
-export const collections = { blog, notes, product }
+// Projects are artefacts rather than posts: each entry is one thing that was
+// built, so on top of the shared entry fields it records the state it is in and
+// whether there is anything a reader can go and check.
+const projectSchema = ({ image }: SchemaContext) =>
+  entrySchema({ image }).extend({
+    status: z.enum(['ongoing', 'shipped', 'paused', 'oss']),
+    role: z.string().optional(),
+    period: z.string().optional(),
+    stack: z.array(z.string()).default([]),
+    links: z
+      .array(z.object({ label: z.string(), href: z.string().url() }))
+      .default([])
+  })
+
+const projects = defineCollection({
+  loader: glob({ base: './src/content/projects', pattern: '**/*.{md,mdx}' }),
+  schema: projectSchema
+})
+
+export const collections = { blog, notes, product, projects }
