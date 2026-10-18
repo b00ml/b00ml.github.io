@@ -12,12 +12,22 @@ const COLLECTIONS = [
   ['projects', 'src/content/projects']
 ] as const
 
+/** Every markdown file under `dir`, as a `/`-joined path relative to it. */
+function markdownFiles(dir: string, prefix = ''): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+    const rel = prefix ? `${prefix}/${item.name}` : item.name
+    if (item.isDirectory()) return markdownFiles(`${dir}/${item.name}`, rel)
+    return /\.mdx?$/.test(item.name) ? [rel] : []
+  })
+}
+
 describe('sitemap lastmod', () => {
   test('dates every article that exists', () => {
     for (const [route, dir] of COLLECTIONS) {
-      const files = readdirSync(dir).filter((name) => /\.mdx?$/.test(name))
-      for (const file of files) {
-        const pathname = `/${route}/${file.replace(/\.mdx?$/, '')}`
+      for (const file of markdownFiles(dir)) {
+        // A project's `<slug>/index.md` is served at `/projects/<slug>`.
+        const slug = file.replace(/\.mdx?$/, '').replace(/\/index$/, '')
+        const pathname = `/${route}/${slug}`
         // Falling back to the pathname makes a miss report which route missed.
         expect(sitemapLastModified(pathname) ?? pathname).toMatch(ISO)
       }

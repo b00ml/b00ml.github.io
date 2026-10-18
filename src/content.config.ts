@@ -47,12 +47,19 @@ const product = defineCollection({
 // Projects are artefacts rather than posts: each entry is one thing that was
 // built, so on top of the shared entry fields it records the state it is in and
 // whether there is anything a reader can go and check.
+//
+// A project that has more to say than one page holds gets a directory of its
+// own: `<slug>/index.md` is the overview and carries the state, `<slug>/<part>.md`
+// are the deep dives. Only the overview has to declare `status` — the sub-pages
+// take their state from it — and `order` decides the reading order of the parts.
 const projectSchema = ({ image }: SchemaContext) =>
   entrySchema({ image }).extend({
-    status: z.enum(['ongoing', 'shipped', 'paused', 'oss']),
+    status: z.enum(['ongoing', 'shipped', 'paused', 'oss']).optional(),
     role: z.string().optional(),
     period: z.string().optional(),
     stack: z.array(z.string()).default([]),
+    order: z.number().default(0),
+    summary: z.string().optional(),
     links: z
       .array(z.object({ label: z.string(), href: z.string().url() }))
       .default([])

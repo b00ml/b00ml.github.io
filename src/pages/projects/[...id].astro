@@ -5,13 +5,16 @@ import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
 import { contentLastModified } from '@/lib/seo/lastmod'
 import { detailAvailable } from '@/lib/seo/drafts'
+import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
 import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
 
 /**
- * Project detail - /projects/<slug>
- * One page per built thing. Differs from a post in one place only: the header
- * carries the project's state, scope and evidence links before any prose, so a
- * reader knows what they are looking at without scrolling.
+ * Project detail - /projects/<slug> and /projects/<slug>/<part>
+ * One page per built thing, plus the pages of projects that need more than one.
+ * Differs from a post in one place only: the header carries the project's state,
+ * scope and evidence links before any prose, so a reader knows what they are
+ * looking at without scrolling. Sub-pages inherit that state from their overview
+ * instead of repeating it.
  */
 export const prerender = true
 
@@ -22,7 +25,7 @@ export async function getStaticPaths() {
       detailAvailable(entry.data.draft, import.meta.env.DRAFT_PREVIEW, import.meta.env.DEV)
     )
     .map((entry) => ({
-      params: { id: entry.id },
+      params: { id: projectPath(entry) },
       props: { entry }
     }))
 }
@@ -34,12 +37,21 @@ type Props = {
 const { entry } = Astro.props
 const { Content } = await render(entry)
 
-const { title, description, pubDate, updatedDate, status, role, period, stack, links } = entry.data
+const all = (await getCollection('projects')).filter((item) => !item.data.draft)
+const isRoot = isProjectRoot(entry)
+const rootId = projectRootId(entry)
+const project = isRoot ? entry : all.find((item) => isProjectRoot(item) && projectRootId(item) === rootId)
+const pages = all
+  .filter((item) => !isProjectRoot(item) && projectRootId(item) === rootId)
+  .sort((a, b) => a.data.order - b.data.order)
+
+const { title, description, pubDate, updatedDate, role, period, stack, links } = entry.data
+const { status = 'shipped' } = project?.data ?? {}
 const statusLabel = STATUS_LABELS[status as ProjectStatus]
 
 const dateModified = contentLastModified(entry.filePath, pubDate, updatedDate)
 const meta = {
-  title,
+  title: isRoot ? title : `${title} · ${project?.data.title ?? '项目'}`,
   description: description || title,
   noindex: entry.data.draft,
   articleDate: pubDate.toISOString(),
@@ -53,7 +65,7 @@ const entryLd = {
   '@type': 'CreativeWork',
   '@id': `${pageUrl}#project`,
   mainEntityOfPage: pageUrl,
-  name: title,
+  name: meta.title,
   ...(description ? { description } : {}),
   inLanguage: 'zh-CN',
   datePublished: pubDate.toISOString(),
@@ -61,53 +73,103 @@ const entryLd = {
   ...(stack.length ? { keywords: stack } : {}),
   author: { '@id': `${origin}/#person` }
 }
+const breadcrumbItems = [
+  { name: '首页', item: `${origin}/` },
+  { name: '项目', item: `${origin}/projects` },
+  ...(isRoot
+    ? [{ name: title, item: `${origin}/projects/${rootId}` }]
+    : [
+        { name: project?.data.title ?? rootId, item: `${origin}/projects/${rootId}` },
+        { name: title, item: pageUrl }
+      ])
+]
 const breadcrumbLd = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: '首页', item: `${origin}/` },
-    { '@type': 'ListItem', position: 2, name: '项目', item: `${origin}/projects` },
-    { '@type': 'ListItem', position: 3, name: title }
-  ]
+  itemListElement: breadcrumbItems.map((item, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    ...item
+  }))
 }
+
+/** Links to the rest of this project, so a reader never dead-ends inside a part. */
+const siblings = isRoot
+  ? pages.map((item) => ({
+      href: `/projects/${projectPath(item)}`,
+      title: item.data.title,
+      summary: item.data.summary,
+      current: false
+    }))
+  : [
+      {
+        href: `/projects/${rootId}`,
+        title: project?.data.title ?? rootId,
+        summary: '总览',
+        current: false
+      },
+      ...pages.map((item) => ({
+        href: `/projects/${projectPath(item)}`,
+        title: item.data.title,
+        summary: item.data.summary,
+        current: item.id === entry.id
+      }))
+    ]
 ---
 
-<PageLayout {meta} back='/projects'>
+<PageLayout {meta} back={isRoot ? '/projects' : `/projects/${rootId}`}>
   <JsonLd schema={[entryLd, breadcrumbLd]} />
   <div slot='header' class='animate gap-y-4'>
-    <div class='mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
-      <span class='rounded-md bg-muted px-2 py-1 text-foreground'>{statusLabel}</span>
-      {period && <span>{period}</span>}
-      {role && <span>· {role}</span>}
-    </div>
-
-    <h1 class='mb-4 text-3xl font-bold leading-tight sm:text-4xl'>{title}</h1>
-    {description && <p class='text-lg text-muted-foreground'>{description}</p>}
-
     {
-      stack.length > 0 && (
-        <div class='mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground'>
-          {stack.map((item: string) => (
-            <span class='rounded-md border border-border px-2 py-1'>{item}</span>
-          ))}
-        </div>
-      )
-    }
+      isRoot ? (
+        <>
+          <div class='mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+            <span class='rounded-md bg-muted px-2 py-1 text-foreground'>{statusLabel}</span>
+            {period && <span>{period}</span>}
+            {role && <span>· {role}</span>}
+          </div>
 
-    {
-      links.length > 0 && (
-        <div class='mt-4 flex flex-wrap gap-3'>
-          {links.map((link: { label: string; href: string }) => (
-            <a
-              href={link.href}
-              target='_blank'
-              rel='noopener noreferrer'
-              class='rounded-md border border-border px-3 py-1.5 text-sm hover:border-foreground/20'
-            >
-              {link.label} ↗
+          <h1 class='mb-4 text-3xl font-bold leading-tight sm:text-4xl'>{title}</h1>
+          {description && <p class='text-lg text-muted-foreground'>{description}</p>}
+
+          {stack.length > 0 && (
+            <div class='mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground'>
+              {stack.map((item: string) => (
+                <span class='rounded-md border border-border px-2 py-1'>{item}</span>
+              ))}
+            </div>
+          )}
+
+          {links.length > 0 && (
+            <div class='mt-4 flex flex-wrap gap-3'>
+              {links.map((link: { label: string; href: string }) => (
+                <a
+                  href={link.href}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  class='rounded-md border border-border px-3 py-1.5 text-sm hover:border-foreground/20'
+                >
+                  {link.label} ↗
+                </a>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div class='mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+            <a href={`/projects/${rootId}`} class='underline underline-offset-4'>
+              {project?.data.title ?? rootId}
             </a>
-          ))}
-        </div>
+            <span>·</span>
+            <span>{statusLabel}</span>
+            <span>·</span>
+            <span>共 {pages.length + 1} 篇</span>
+          </div>
+
+          <h1 class='mb-4 text-3xl font-bold leading-tight sm:text-4xl'>{title}</h1>
+          {description && <p class='text-lg text-muted-foreground'>{description}</p>}
+        </>
       )
     }
   </div>
@@ -116,12 +178,43 @@ const breadcrumbLd = {
     <Content />
   </article>
 
-  <div slot='bottom' class='animate mt-8 flex justify-end border-t border-border pt-6'>
-    <a
-      href='/projects'
-      class='rounded-md border border-border px-3 py-1.5 text-sm hover:border-foreground/20'
-    >
-      全部项目
-    </a>
+  <div slot='bottom' class='animate mt-10 border-t border-border pt-6'>
+    <div class='flex flex-wrap items-center justify-between gap-3'>
+      <p class='text-sm text-muted-foreground'>
+        {isRoot ? `这个项目分 ${pages.length + 1} 篇讲` : '这个项目的其它几篇'}
+      </p>
+      <a
+        href='/projects'
+        class='rounded-md border border-border px-3 py-1.5 text-sm hover:border-foreground/20'
+      >
+        全部项目
+      </a>
+    </div>
+
+    {
+      siblings.length > 0 && (
+        <ul class='mt-4 grid gap-2 sm:grid-cols-2'>
+          {siblings.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                class:list={[
+                  'flex h-full flex-col gap-0.5 rounded-lg border px-4 py-3 text-sm transition',
+                  item.current
+                    ? 'border-foreground/30 bg-muted/40'
+                    : 'border-border hover:border-foreground/20'
+                ]}
+                aria-current={item.current ? 'page' : undefined}
+              >
+                <span class='font-medium'>{item.title}</span>
+                {item.summary && (
+                  <span class='text-xs text-muted-foreground'>{item.summary}</span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
   </div>
 </PageLayout>

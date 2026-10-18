@@ -24,6 +24,15 @@ function entryFileIn(dir: string, id: string): string | undefined {
   return ENTRY_EXTENSIONS.map((ext) => resolve(dir, `${id}.${ext}`)).find(existsSync)
 }
 
+/**
+ * A project that is told in several pages keeps its overview at
+ * `<slug>/index.md`, so the URL `/projects/<slug>` has no file of that exact
+ * name. The index file is the fallback only after the direct name misses.
+ */
+function entryIndexFileIn(dir: string, id: string): string | undefined {
+  return ENTRY_EXTENSIONS.map((ext) => resolve(dir, id, `index.${ext}`)).find(existsSync)
+}
+
 function decodeSlug(slug: string): string | undefined {
   try {
     return decodeURIComponent(slug)
@@ -47,7 +56,8 @@ export function findEntryFile(collection: string, slug: string): string | undefi
   const direct = entryFileIn(dir, slug)
   if (direct) return direct
   const decoded = decodeSlug(slug)
-  return decoded && decoded !== slug ? entryFileIn(dir, decoded) : undefined
+  if (!decoded) return undefined
+  return entryFileIn(dir, decoded) ?? entryIndexFileIn(dir, decoded)
 }
 
 /** Frontmatter values as written; unvalidated and possibly absent. */

@@ -5,6 +5,7 @@ import { getCollection } from 'astro:content'
 import PageLayout from '@/layouts/BaseLayout.astro'
 import { Button } from 'astro-pure/user'
 import { sectionMetadata } from '@/lib/seo/metadata'
+import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
 import { STATUS_LABELS, STATUS_NOTE, STATUS_ORDER, type ProjectStatus } from '@/lib/projects/status'
 
 /**
@@ -15,13 +16,20 @@ import { STATUS_LABELS, STATUS_NOTE, STATUS_ORDER, type ProjectStatus } from '@/
  */
 export const prerender = true
 
-const entries = (await getCollection('projects')).filter((entry) => !entry.data.draft)
+const allEntries = (await getCollection('projects')).filter((entry) => !entry.data.draft)
+const entries = allEntries.filter(isProjectRoot)
+
+/** How many pages a project is told in, shown on its card when it is more than one. */
+function partCount(entry: (typeof entries)[number]): number {
+  const rootId = projectRootId(entry)
+  return allEntries.filter((item) => !isProjectRoot(item) && projectRootId(item) === rootId).length
+}
 
 const groups = STATUS_ORDER.map((status) => ({
   status,
   note: STATUS_NOTE[status],
   entries: entries
-    .filter((entry) => entry.data.status === status)
+    .filter((entry) => (entry.data.status ?? 'shipped') === status)
     .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
 })).filter((group) => group.entries.length > 0)
 
@@ -50,9 +58,7 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
         </div>
       </div>
       <p class='max-w-3xl text-muted-foreground'>
-        这里放我做过的项目：一句话说清它是什么，我负责哪一段，关键取舍是什么，现在是什么状态。
-        想看我拆别人的产品，去 <a href='/product' class='underline underline-offset-4'>Product</a>；
-        想看我最近在想什么，去 <a href='/blog' class='underline underline-offset-4'>Blog</a>。
+        这里放我做过的项目：一句话说清它是什么、我负责哪一段、关键取舍是什么、现在是什么状态。一篇讲不完的会拆成几篇，从总览进去逐篇读。想看我拆别人的产品，去 <a href='/product' class='underline underline-offset-4'>Product</a>；想看我最近在想什么，去 <a href='/blog' class='underline underline-offset-4'>Blog</a>。
       </p>
     </div>
 
@@ -72,15 +78,16 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
             {group.entries.map((entry) => (
               <li>
                 <a
-                  href={`/projects/${entry.id}`}
+                  href={`/projects/${projectPath(entry)}`}
                   class='group flex h-full flex-col gap-2 rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'
                   data-astro-prefetch
                 >
                   <div class='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
                     <span class='rounded-md bg-muted px-2 py-0.5'>
-                      {STATUS_LABELS[entry.data.status as ProjectStatus]}
+                      {STATUS_LABELS[(entry.data.status ?? 'shipped') as ProjectStatus]}
                     </span>
                     {metaLine(entry) && <span>{metaLine(entry)}</span>}
+                    {partCount(entry) > 0 && <span>· {partCount(entry) + 1} 篇</span>}
                   </div>
 
                   <h3 class='text-lg font-medium leading-tight group-hover:text-foreground'>
