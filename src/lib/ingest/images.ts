@@ -38,13 +38,15 @@ export type ImagePlan = {
  * 把正文里的图片引用变成站点能用的形式：本地附件解析成真实文件、按清洗后的名字记进
  * 计划，正文改写成 `../../assets/<name>.<ext>`；远程图片一个字节都不动，只出告警。
  *
- * 附件名里的中文没有机械的英文对应，所以清洗不出拉丁字母时退回文章短名——这是唯一
- * 不编造语义的兜底，也保证 URL 里不出现中文。找不到的本地文件直接抛错，绝不写出坏链接。
+ * 附件名清洗后如果只重复文章名里已有的词，就退回文章短名：Obsidian 默认把附件命名为
+ * 「笔记标题 + 时间戳」，中文被清洗掉之后往往只剩标题里的一个词（`Agent 工程八大核心内功`
+ * 只留下 `agent`）。这条兜底不编造任何语义，也保证 URL 里不出现中文。找不到的本地文件
+ * 直接抛错，绝不写出坏链接。
  */
 export function planImages(input: {
   body: string
   notePath: string
-  /** 文章短名的英文部分，用于附件名全是中文时的兜底命名。 */
+  /** 文章短名的英文部分：附件名说不出新东西时用它，也保证 URL 里不出现中文。 */
   name: string
   collection: ContentCollection
   exists: (path: string) => boolean
@@ -52,7 +54,9 @@ export function planImages(input: {
 }): ImagePlan {
   const noteDir = dirname(resolve(input.notePath))
   const prefix = posix.relative(CONTENT_DIRS[input.collection], ASSETS_DIR)
-  const fallback = asciiWords(input.name) || 'image'
+  const articleName = asciiWords(input.name)
+  const fallback = articleName || 'image'
+  const articleWords = new Set(articleName === '' ? [] : articleName.split('-'))
   const taken = new Set<string>()
   const placed = new Map<string, { image: PlannedImage; ref: string }>()
   const images: PlannedImage[] = []
@@ -91,7 +95,7 @@ export function planImages(input: {
       throw new Error(`读不到附件：${from}（${messageOf(error)}）。`)
     }
 
-    const file = targetName(basename(from), taken, fallback)
+    const file = targetName(basename(from), taken, fallback, articleWords)
     const image: PlannedImage = {
       from,
       to: posix.join(ASSETS_DIR, file),
@@ -105,46 +109,51 @@ export function planImages(input: {
     return entry
   }
 
-  const body = input.body.replace(
-    IMAGE_PATTERN,
-    (match, wiki, pipe, alt, dest, offset): string => {
-      if (wiki !== undefined) {
-        const { ref } = place(wiki, offset)
-        return `![${altText(pipe, wiki)}](${ref})`
-      }
-
-      const url = (dest ?? '').trim()
-      if (!SCHEME.test(url)) {
-        const { ref } = place(url, offset)
-        return `![${alt ?? ''}](${ref})`
-      }
-      // data: 之类的内联图片本身就是图片，没有可搬的文件，也不该报远程告警。
-      if (!/^https?:/i.test(url)) return match
-
-      const host = hostOf(url)
-      warn('remote-image', `远程图片保持原地址，不下载、不改写：${url}`)
-      if (host === undefined || !OWN_HOSTS.has(host)) {
-        warn(
-          'third-party-image',
-          `${host ?? '未知域名'} 不是本站域名，图片仍指向第三方站点，引用前请确认版权：${url}`
-        )
-      }
-      images.push({ from: url, to: url, bytes: 0, sha256: '', remote: true })
-      return match
+  const body = input.body.replace(IMAGE_PATTERN, (match, wiki, pipe, alt, dest, offset): string => {
+    if (wiki !== undefined) {
+      const { ref } = place(wiki, offset)
+      return `![${altText(pipe, wiki)}](${ref})`
     }
-  )
+
+    const url = (dest ?? '').trim()
+    if (!SCHEME.test(url)) {
+      const { ref } = place(url, offset)
+      return `![${alt ?? ''}](${ref})`
+    }
+    // data: 之类的内联图片本身就是图片，没有可搬的文件，也不该报远程告警。
+    if (!/^https?:/i.test(url)) return match
+
+    const host = hostOf(url)
+    warn('remote-image', `远程图片保持原地址，不下载、不改写：${url}`)
+    if (host === undefined || !OWN_HOSTS.has(host)) {
+      warn(
+        'third-party-image',
+        `${host ?? '未知域名'} 不是本站域名，图片仍指向第三方站点，引用前请确认版权：${url}`
+      )
+    }
+    images.push({ from: url, to: url, bytes: 0, sha256: '', remote: true })
+    return match
+  })
 
   return { body, images, warnings }
 }
 
 /**
  * 附件名的清洗：先丢掉尾部时间戳，再只保留拉丁字母数字并用连字符连接。
+ * 清洗结果若被文章名完全覆盖（每个词文章名里都有），说明它没带来新信息——典型就是
+ * 「笔记标题 + 时间戳」这种自动命名，中文一丢只剩标题里的一个词。这时改用文章短名。
  * 扩展名原样保留；同名时按出现顺序加 `-2`、`-3`，同一篇笔记里不互相覆盖。
  */
-function targetName(name: string, taken: Set<string>, fallback: string): string {
+function targetName(
+  name: string,
+  taken: Set<string>,
+  fallback: string,
+  articleWords: Set<string>
+): string {
   const ext = extname(name)
   const stem = name.slice(0, name.length - ext.length).replace(TIMESTAMP, '')
-  const base = asciiWords(stem) || fallback
+  const words = asciiWords(stem)
+  const base = saysSomethingNew(words, articleWords) ? words : fallback
   let file = `${base}${ext}`
   for (let index = 2; taken.has(file.toLowerCase()); index += 1) {
     file = `${base}-${index}${ext}`
@@ -156,6 +165,14 @@ function targetName(name: string, taken: Set<string>, fallback: string): string 
 /** 文件名里的拉丁词，转成小写连字符形式；没有拉丁词就返回空串。 */
 function asciiWords(text: string): string {
   return (text.match(/[A-Za-z0-9]+/g) ?? []).join('-').toLowerCase()
+}
+
+/**
+ * 清洗出来的词里有没有文章名没提过的。没有拉丁词（全是中文）一律算「没有」，
+ * 于是退回文章短名——这是唯一不编造语义的兜底。
+ */
+function saysSomethingNew(words: string, articleWords: Set<string>): boolean {
+  return words !== '' && words.split('-').some((word) => !articleWords.has(word))
 }
 
 /** wiki 语法的 alt：竖线后是尺寸就丢掉，是文字就用它；都没有就退回文件名（去时间戳）。 */

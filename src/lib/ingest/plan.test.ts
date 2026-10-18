@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test'
 import { dirname, join, resolve } from 'node:path'
+import { expect, test } from 'bun:test'
 
 import {
   buildIngestPlan,
@@ -313,10 +313,7 @@ test('a mix marks each tag separately and warns only for the new one', () => {
     { value: '产品', source: 'existing' },
     { value: 'rag', source: 'new' }
   ])
-  expect(plan.warnings.map((warning) => warning.code)).toEqual([
-    'no-h1',
-    'tag-not-in-vocabulary'
-  ])
+  expect(plan.warnings.map((warning) => warning.code)).toEqual(['no-h1', 'tag-not-in-vocabulary'])
   expect(plan.warnings[1].message).toContain('/tags/rag')
 })
 
@@ -524,7 +521,9 @@ test('an H1 differing from the title is removed and kept as a description draft'
 })
 
 test('an equivalent H1 is removed without leaving a description draft', () => {
-  const plan = planFor(note(`title: 'Title: Test'\ncreated: 2026-10-17`, '# Title Test!\n\n正文。\n'))
+  const plan = planFor(
+    note(`title: 'Title: Test'\ncreated: 2026-10-17`, '# Title Test!\n\n正文。\n')
+  )
 
   expect(plan.body.preview).toBe('正文。')
   expect(plan.fields.description).toEqual({ value: null, source: 'missing' })
@@ -656,7 +655,10 @@ test('a four-space indented # line is code, not an H1', () => {
 
 test('a fence may start with up to three spaces of indentation', () => {
   const plan = planFor(
-    note(`title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`, '  ```\n# 注释\n   ```\n\n正文。\n')
+    note(
+      `title: 'T'\ndescription: '描述'\ncreated: 2026-10-17`,
+      '  ```\n# 注释\n   ```\n\n正文。\n'
+    )
   )
 
   expect(plan.body.h1).toEqual({ found: false, text: null, equivalentToTitle: false })
@@ -889,6 +891,38 @@ test('an attachment name without Latin letters falls back to the article name', 
   ])
 })
 
+test('an attachment name that only repeats words from the article name is replaced by it', () => {
+  const path = 'E:/notes/source.md'
+  const file = beside(path, 'Agent 工程八大核心内功-1792290852311.webp')
+  const body = '![[Agent 工程八大核心内功-1792290852311.webp]]\n'
+  const plan = planFor(imageNote(body, 'Agent 工程八大核心内功：会写 Prompt 只是入场券'), {
+    path,
+    files: { [file]: IMAGE },
+    slug: 'agent-engineering-8-skills'
+  })
+
+  expect(plan.images.map((image) => image.to)).toEqual([
+    'src/assets/agent-engineering-8-skills.webp'
+  ])
+})
+
+test('an attachment name that adds a word the article name lacks is kept as-is', () => {
+  const path = 'E:/notes/source.md'
+  const detailed = beside(path, 'agent-architecture-1791295556765.webp')
+  const unrelated = beside(path, 'shadcn.png')
+  const body = '![[agent-architecture-1791295556765.webp]]\n\n![[shadcn.png]]\n'
+  const plan = planFor(imageNote(body), {
+    path,
+    files: { [detailed]: IMAGE, [unrelated]: IMAGE },
+    slug: 'agent-engineering-8-skills'
+  })
+
+  expect(plan.images.map((image) => image.to)).toEqual([
+    'src/assets/agent-architecture.webp',
+    'src/assets/shadcn.png'
+  ])
+})
+
 test('attachments resolve beside the note, in attachments/, and at the vault root', () => {
   const path = 'E:/vault/开发侧/note.md'
   const first = beside(path, 'attachments', 'a-1791295556765.png')
@@ -913,9 +947,7 @@ test('the same attachment referenced twice is planned once', () => {
   const plan = planFor(imageNote(body), { path, files: { [file]: IMAGE } })
 
   expect(plan.images.length).toBe(1)
-  expect(plan.body.preview).toBe(
-    '![same](../../assets/same.png)\n\n![same](../../assets/same.png)'
-  )
+  expect(plan.body.preview).toBe('![same](../../assets/same.png)\n\n![same](../../assets/same.png)')
 })
 
 test('inline data images are neither copied nor reported', () => {
