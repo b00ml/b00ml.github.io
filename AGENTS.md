@@ -57,6 +57,10 @@ TypeScript 写逻辑，Astro 写页面。提交信息用 Conventional Commits。
 格式沿用仓库现有风格——两空格缩进、单引号、无分号、100 列、import 排序，`bun run format` 会替你处理。
 测试放在被测代码旁边，命名 `*.test.ts`，用 `bun:test`。
 
+提交时用 `git commit -- <路径>` 指定文件。索引里常常已经躺着上一步暂存的改动（`git mv` 的重命名、
+`ingest` 写出的文章），限定路径才提交得恰好是这次要做的那件事；整索引提交会把它们捎进一个不相干的
+提交，HEAD 于是自相矛盾，构建失败。
+
 `main` 就是生产分支：推送即发布。
 
 图片用相对路径，从文章所在目录算起——文章在 `src/content/notes/`、图片放 `src/assets/`，所以写
