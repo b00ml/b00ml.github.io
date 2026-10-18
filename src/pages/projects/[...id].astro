@@ -3,6 +3,8 @@ import { getCollection, render, type CollectionEntry } from 'astro:content'
 
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
+import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import ProjectNav from '@/components/navigation/ProjectNav.astro'
 import { contentLastModified } from '@/lib/seo/lastmod'
 import { detailAvailable } from '@/lib/seo/drafts'
 import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
@@ -35,7 +37,8 @@ type Props = {
 }
 
 const { entry } = Astro.props
-const { Content } = await render(entry)
+const { Content, headings } = await render(entry)
+const tocHeadings = headings.filter(({ depth }) => depth <= 3)
 
 const all = (await getCollection('projects')).filter((item) => !item.data.draft)
 const isRoot = isProjectRoot(entry)
@@ -93,7 +96,26 @@ const breadcrumbLd = {
   }))
 }
 
-/** Links to the rest of this project, so a reader never dead-ends inside a part. */
+/**
+ * The project's own pages, in the sidebar so the reader can jump sideways
+ * without leaving the text. The overview leads, every page links back to it.
+ */
+const projectPages = [
+  {
+    href: `/projects/${rootId}`,
+    title: project?.data.title ?? rootId,
+    summary: '总览',
+    current: isRoot
+  },
+  ...pages.map((item) => ({
+    href: `/projects/${projectPath(item)}`,
+    title: item.data.title,
+    summary: item.data.summary,
+    current: item.id === entry.id
+  }))
+]
+
+/** The way back out, kept at the bottom where the reader ends up. */
 const siblings = isRoot
   ? pages.map((item) => ({
       href: `/projects/${projectPath(item)}`,
@@ -101,24 +123,13 @@ const siblings = isRoot
       summary: item.data.summary,
       current: false
     }))
-  : [
-      {
-        href: `/projects/${rootId}`,
-        title: project?.data.title ?? rootId,
-        summary: '总览',
-        current: false
-      },
-      ...pages.map((item) => ({
-        href: `/projects/${projectPath(item)}`,
-        title: item.data.title,
-        summary: item.data.summary,
-        current: item.id === entry.id
-      }))
-    ]
+  : []
 ---
 
 <PageLayout {meta} back={isRoot ? '/projects' : `/projects/${rootId}`}>
   <JsonLd schema={[entryLd, breadcrumbLd]} />
+  {!!tocHeadings.length && <TableOfContents headings={tocHeadings} slot='sidebar' />}
+  <ProjectNav items={projectPages} slot='sidebar' />
   <div slot='header' class='animate gap-y-4'>
     {
       isRoot ? (
@@ -181,7 +192,7 @@ const siblings = isRoot
   <div slot='bottom' class='animate mt-10 border-t border-border pt-6'>
     <div class='flex flex-wrap items-center justify-between gap-3'>
       <p class='text-sm text-muted-foreground'>
-        {isRoot ? `这个项目分 ${pages.length + 1} 篇讲` : '这个项目的其它几篇'}
+        {isRoot ? `这个项目分 ${pages.length + 1} 篇讲` : '这一篇讲的是整个项目的一段'}
       </p>
       <a
         href='/projects'
@@ -193,18 +204,19 @@ const siblings = isRoot
 
     {
       siblings.length > 0 && (
+        <p class='mt-3 text-sm text-muted-foreground'>
+          这个项目分 {siblings.length + 1} 篇讲，另外几篇：
+        </p>
+      )
+    }
+    {
+      siblings.length > 0 && (
         <ul class='mt-4 grid gap-2 sm:grid-cols-2'>
           {siblings.map((item) => (
             <li>
               <a
                 href={item.href}
-                class:list={[
-                  'flex h-full flex-col gap-0.5 rounded-lg border px-4 py-3 text-sm transition',
-                  item.current
-                    ? 'border-foreground/30 bg-muted/40'
-                    : 'border-border hover:border-foreground/20'
-                ]}
-                aria-current={item.current ? 'page' : undefined}
+                class='flex h-full flex-col gap-0.5 rounded-lg border border-border px-4 py-3 text-sm transition hover:border-foreground/20'
               >
                 <span class='font-medium'>{item.title}</span>
                 {item.summary && (

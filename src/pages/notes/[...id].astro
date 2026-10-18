@@ -6,6 +6,7 @@ import { contentLastModified } from '@/lib/seo/lastmod'
 import { Button, Icon } from 'astro-pure/user'
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
+import TableOfContents from '@/components/navigation/TableOfContents.astro'
 
 export const prerender = true
 
@@ -26,7 +27,8 @@ type Props = {
 }
 
 const { entry } = Astro.props
-const { Content } = await render(entry)
+const { Content, headings } = await render(entry)
+const tocHeadings = headings.filter(({ depth }) => depth <= 3)
 
 const { title, description, pubDate, updatedDate, tags } = entry.data
 
@@ -70,6 +72,7 @@ const breadcrumbLd = {
 
 <PageLayout {meta} back='/notes'>
   <JsonLd schema={[noteLd, breadcrumbLd]} />
+  {!!tocHeadings.length && <TableOfContents headings={tocHeadings} slot='sidebar' />}
   <div slot='header' class='animate gap-y-4'>
     {
       tags.length > 0 && (

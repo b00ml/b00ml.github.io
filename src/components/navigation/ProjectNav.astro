@@ -1,0 +1,48 @@
+---
+import { cn } from 'astro-pure/utils'
+
+/**
+ * The pages of one project, as a nested list for the sidebar: the overview
+ * first, then the deep dives in their `order`. A project read as several pages
+ * needs its shape visible from any one of them, so this stays next to the table
+ * of contents rather than at the bottom of the article.
+ */
+interface Item {
+  href: string
+  title: string
+  summary?: string
+  current: boolean
+}
+
+interface Props {
+  items: Item[]
+  class?: string
+}
+
+const { items, class: className } = Astro.props
+---
+
+<nav class={cn('mt-8 border-t border-border pt-4', className)} aria-label='项目内的页面'>
+  <h2 class='font-semibold'>PROJECT</h2>
+  <ul class='mt-4 space-y-1 text-card-foreground'>
+    {
+      items.map((item) => (
+        <li>
+          <a
+            href={item.href}
+            aria-current={item.current ? 'page' : undefined}
+            class:list={[
+              'toc-item line-clamp-2 rounded-md px-3 py-1 text-foreground/75 transition-all hover:text-foreground',
+              item.current && 'bg-muted font-medium text-primary'
+            ]}
+          >
+            {item.title}
+            {item.summary && (
+              <span class='mt-0.5 block text-xs text-muted-foreground'>{item.summary}</span>
+            )}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
