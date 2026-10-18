@@ -17,7 +17,7 @@ const newestFirst = <T extends { data: { pubDate: Date; draft: boolean } }>(entr
 
 const posts = newestFirst(await getCollection('blog')).slice(0, 5)
 const notes = newestFirst(await getCollection('notes')).slice(0, 5)
-const products = newestFirst(await getCollection('product')).slice(0, 5)
+const products = newestFirst(await getCollection('product')).slice(0, 3)
 
 const meta = {
   title: 'Home',
@@ -32,7 +32,47 @@ const meta = {
       <p class='max-w-2xl text-muted-foreground'>
         写 AI Agent、软件工程和产品思考。这里是长文、短记录和产品拆解汇在一起的地方。
       </p>
+      <p class='mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm'>
+        <a class='text-muted-foreground hover:text-foreground' href='https://github.com/b00ml' target='_blank' rel='noopener noreferrer'>GitHub</a>
+        <a class='text-muted-foreground hover:text-foreground' href='mailto:peik10421@163.com'>邮件</a>
+        <a class='text-muted-foreground hover:text-foreground' href='/rss.xml'>RSS</a>
+      </p>
     </div>
+
+    <Section title='About' class='animate'>
+      <p>
+        我是 <strong>peik1</strong>，做 AI 产品工程：把「AI 能不能帮我干这个」变成能跑、能评测、出错能兜住的工作流。
+      </p>
+      <p class='text-muted-foreground'>
+        这两年被同一个问题绕住——AI 到底能替人把哪件事办完。到现在也没找到什么聪明的答案，只是把问题问小了：不去追通用，只看一个具体流程能跑多远。
+      </p>
+      <p class='text-muted-foreground'>
+        目前主要在做一个桌面工作台 <a href='/projects/ark-workbench'>Ark</a>：素材收进来，经过结构化加工和检索回读，再产出新的东西。另外两个项目（英语出题、财务审核）各跑通过一版，写在<a href='/projects'>项目页</a>。
+      </p>
+      <Button title='More about me' class='w-fit' href='/about' style='pill' />
+    </Section>
+
+    <Section title='Product' class='animate'>
+      {
+        products.length > 0 ? (
+          <ul class='flex flex-col gap-y-3'>
+            {products.map((entry) => (
+              <li>
+                <LinkCard
+                  href={`/product/${entry.id}`}
+                  heading={entry.data.title}
+                  subheading={entry.data.description}
+                  target='_self'
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class='text-muted-foreground'>还没有产品笔记。</p>
+        )
+      }
+      <Button title='All product notes' class='w-fit' href='/product' style='pill' />
+    </Section>
 
     <Section title='Blog' class='animate'>
       {
@@ -69,28 +109,6 @@ const meta = {
         )
       }
       <Button title='All notes' class='w-fit' href='/notes' style='pill' />
-    </Section>
-
-    <Section title='Product' class='animate'>
-      {
-        products.length > 0 ? (
-          <ul class='flex flex-col gap-y-3'>
-            {products.map((entry) => (
-              <li>
-                <LinkCard
-                  href={`/product/${entry.id}`}
-                  heading={entry.data.title}
-                  subheading={entry.data.description}
-                  target='_self'
-                />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class='text-muted-foreground'>还没有产品笔记。</p>
-        )
-      }
-      <Button title='All product notes' class='w-fit' href='/product' style='pill' />
     </Section>
   </main>
 </PageLayout>
