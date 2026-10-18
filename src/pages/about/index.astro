@@ -2,9 +2,10 @@
 import { Button } from 'astro-pure/user'
 import PageLayout from '@/layouts/CommonPage.astro'
 
-// Placeholder skeleton: the real copy is written separately from the prune work.
 const headings = [
   { depth: 2, slug: 'about', text: '关于' },
+  { depth: 2, slug: 'doing', text: '在做什么' },
+  { depth: 2, slug: 'blog', text: '这个站' },
   { depth: 2, slug: 'contact', text: '联系' }
 ]
 ---
@@ -12,12 +13,47 @@ const headings = [
 <PageLayout title='About' {headings}>
   <h2 id='about'>关于</h2>
   <p>
-    这里会写我是谁、在做什么方向、以及这个站点存在的理由。内容待补。
+    我是朱军盛，网上叫 <strong>peik1</strong>，做 AI 产品工程：把「AI 能不能帮我干这个」变成能跑、能评测、出错能兜住的工作流。
+  </p>
+  <p>
+    这两年在同一个问题上反复绕：AI 到底能替人把哪件事办完。目前的答案是，
+    不信万能助手，信「这件事办完了」。谈不上风格，就是先跑通，再想清楚。
+  </p>
+
+  <h2 id='doing'>在做什么</h2>
+  <p>几件还在手上的东西，基本代表我在意的方向：</p>
+  <ul>
+    <li>
+      <strong>英语内容生产工作台</strong>：教研自用的习题生产线，生成、自动质检、人工审核、发布拆成四段。
+      要回答的不是「能不能生成」，而是「人什么时候必须介入」。
+    </li>
+    <li>
+      <strong>Ark 知识工作台</strong>：一个 Obsidian 插件加 Agent，把视频、文章、开发记录收成带来源、能回读、
+      能再产出的知识资产。这个站里不少判断，最早都长在它的笔记里。
+    </li>
+    <li>
+      <strong>企业财务审核 Agent</strong>：差旅、发票、对账三类场景，规则初审、OCR 取证、模型复核，
+      规则与模型分歧的地方标出来交人拍板。
+    </li>
+  </ul>
+  <p>
+    共同点：都不是更聪明的聊天框，而是把一个流程从头跑到尾，并且留下证据和回头路。
+  </p>
+
+  <h2 id='blog'>这个站</h2>
+  <p>
+    这里挂着三个抽屉：<a href='/blog'>Blog</a> 是想清楚的事，一篇一个论点；
+    <a href='/notes'>Notes</a> 是读过的材料，摘录为主；<a href='/product'>Product</a> 是拆过的产品，
+    看它做了什么取舍、代价是什么。
+  </p>
+  <p>
+    写下来主要是为了逼自己把话说完整——一件事能写成文章，才算真的想明白。
   </p>
 
   <h2 id='contact'>联系</h2>
   <p>
-    最直接的方式是 GitHub：<a href='https://github.com/b00ml' target='_blank'>@b00ml</a>。
+    邮件最靠谱：<a href='mailto:peik10421@163.com'>peik10421@163.com</a>。代码大多在 GitHub
+    <a href='https://github.com/b00ml' target='_blank'>@b00ml</a>。如果某篇文章正好踩中你在做的事，欢迎直接找我。
   </p>
   <Button
     title='GitHub'
