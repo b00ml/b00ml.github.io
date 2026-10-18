@@ -8,7 +8,7 @@ tags: ['agent', 'ai-engineering', 'system-design']
 > 今天，任何一个人都能在五分钟里写一个「能跑」的 Agent：调 API、给工具、加个循环。但从「演示能跑」到「线上敢用」，中间隔着的不是更炫的 Prompt，而是八件工程上的硬功夫。
 
 ---
-![Agent 工程八大核心内功](../../assets/agent.webp)
+![Agent 工程八大核心内功](../../assets/agent-engineering-8-skills.webp)
 ## 为什么是这八件事
 
 大模型本身是通用的、便宜的、还在快速变强的。把它变成一个真正能干活的 Agent，靠的不是咒语，而是把下面这八件事做扎实。
