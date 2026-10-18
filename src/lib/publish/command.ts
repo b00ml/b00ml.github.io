@@ -259,10 +259,10 @@ async function applyPlan(
 
   if (plan.commit) {
     // 只暂存计划里的路径：构建和测试在确认计划之后才跑，这期间任何进程写出的文件都不该
-    // 被 git add -A 卷进提交。重命名要把原路径也交给 git，否则只看到新文件凭空出现。
-    const planned = plan.files.flatMap((file) =>
-      file.from === undefined ? [file.path] : [file.path, file.from]
-    )
+    // 被卷进提交。重命名的原路径不交给 git —— `git status` 只在重命名已经进入暂存区时才
+    // 报 R（工作区里的删 + 增只会是 `D` 加 `??`），那时该路径既不在 index 也不在磁盘上，
+    // 交给 `git add` 只会得到 `pathspec ... did not match any files` 并以 128 退出。
+    const planned = plan.files.map((file) => file.path)
     try {
       if (planned.length > 0) deps.git(['add', '-A', '--', ...planned])
     } catch (error) {
@@ -270,7 +270,10 @@ async function applyPlan(
     }
 
     // 计划是人确认过的那份清单，提交必须恰好等于它；暂存区里多出的路径一律中止。
-    const allowed = new Set(planned)
+    // 白名单比暂存参数多出重命名的原路径：在暂存区里它们是同一件事的两端。
+    const allowed = new Set(
+      plan.files.flatMap((file) => (file.from === undefined ? [file.path] : [file.path, file.from]))
+    )
     let staged: string[]
     try {
       staged = stagedPaths(deps.git(['status', '--porcelain', '-z', '-uall']))

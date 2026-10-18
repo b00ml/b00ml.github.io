@@ -114,7 +114,9 @@ function harness(scenario: Scenario = {}) {
           return `${scenario.remote ?? 'https://github.com/b00ml/b00ml.github.io.git'}\n`
         case 'status':
           statusCalls += 1
-          return statusCalls === 1 ? (scenario.status ?? '') : (scenario.staged ?? scenario.status ?? '')
+          return statusCalls === 1
+            ? (scenario.status ?? '')
+            : (scenario.staged ?? scenario.status ?? '')
         case 'branch':
           return scenario.branch ?? 'main'
         case 'log':
@@ -409,10 +411,20 @@ test('a legitimate run stages exactly the planned paths', async () => {
   const code = await h.run(['--apply'])
 
   expect(code).toBe(0)
-  expect(h.gitCalls.filter((args) => args[0] === 'add')).toEqual([
-    ['add', '-A', '--', asset, POST]
-  ])
+  expect(h.gitCalls.filter((args) => args[0] === 'add')).toEqual([['add', '-A', '--', asset, POST]])
   expect(h.commitMessage()).toBe('content: publish 20261017-new-post')
+})
+
+test('a staged rename is staged by its new path, because the old one is already gone', async () => {
+  const from = 'src/content/blog/20261017-old.md'
+  const to = 'src/content/blog/20261017-renamed.md'
+  const h = harness({ status: `R  ${to}\0${from}\0`, staged: `R  ${to}\0${from}\0` })
+
+  const code = await h.run(['--apply'])
+
+  expect(code).toBe(0)
+  expect(h.gitCalls.filter((args) => args[0] === 'add')).toEqual([['add', '-A', '--', to]])
+  expect(h.commitMessage()).toBe('content: publish 20261017-renamed')
 })
 
 test('a blocked push is a normal outcome with a rerun hint, and the commit survives', async () => {
