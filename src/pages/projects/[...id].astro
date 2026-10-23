@@ -1,14 +1,16 @@
 ---
 import { getCollection, render, type CollectionEntry } from 'astro:content'
+import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
+import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
+import { detailAvailable } from '@/lib/seo/drafts'
+import { contentLastModified } from '@/lib/seo/lastmod'
 
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
-import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import MediumZoom from '@/components/MediumZoom.astro'
 import ProjectNav from '@/components/navigation/ProjectNav.astro'
-import { contentLastModified } from '@/lib/seo/lastmod'
-import { detailAvailable } from '@/lib/seo/drafts'
-import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
-import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
+import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import { integ } from '@/site-config'
 
 /**
  * Project detail - /projects/<slug> and /projects/<slug>/<part>
@@ -43,7 +45,9 @@ const tocHeadings = headings.filter(({ depth }) => depth <= 3)
 const all = (await getCollection('projects')).filter((item) => !item.data.draft)
 const isRoot = isProjectRoot(entry)
 const rootId = projectRootId(entry)
-const project = isRoot ? entry : all.find((item) => isProjectRoot(item) && projectRootId(item) === rootId)
+const project = isRoot
+  ? entry
+  : all.find((item) => isProjectRoot(item) && projectRootId(item) === rootId)
 const pages = all
   .filter((item) => !isProjectRoot(item) && projectRootId(item) === rootId)
   .sort((a, b) => a.data.order - b.data.order)
@@ -219,9 +223,7 @@ const siblings = isRoot
                 class='flex h-full flex-col gap-0.5 rounded-lg border border-border px-4 py-3 text-sm transition hover:border-foreground/20'
               >
                 <span class='font-medium'>{item.title}</span>
-                {item.summary && (
-                  <span class='text-xs text-muted-foreground'>{item.summary}</span>
-                )}
+                {item.summary && <span class='text-xs text-muted-foreground'>{item.summary}</span>}
               </a>
             </li>
           ))}
@@ -230,3 +232,5 @@ const siblings = isRoot
     }
   </div>
 </PageLayout>
+
+{integ.mediumZoom.enable && <MediumZoom />}

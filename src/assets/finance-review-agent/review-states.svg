@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1152" viewBox="0 0 720 1152" role="img" aria-labelledby="title desc"><title id="title">任务完成、人工复核、ERP 审批</title><desc id="desc">三种状态分别记录，完成含义各不相同</desc><style>text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif;fill:#233831}.heading{font-size:36px;font-weight:700}.sub{font-size:25px;fill:#61716d}.label{font-size:23px;font-weight:700}.card-title{font-size:30px;font-weight:700}.body{font-size:28px}.note{font-size:25px;fill:#61716d}</style><rect width="720" height="1152" rx="24" fill="#f7f9f7"/><text x="36" y="65" class="heading">任务完成、人工复核、ERP 审批</text><text x="36" y="107" class="sub">三种状态分别记录，完成含义各不相同</text>
+<rect x="32" y="140" width="656" height="270" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="160" width="142" height="36" rx="9" fill="#eef1f5"/><text x="66" y="186" class="label" style="fill:#45566b">任务记录</text><text x="56" y="240" class="card-title">这次处理运行到哪一步？</text>
+<text x="56" y="284" class="body">排队 → 执行 → 完成 / 失败 / 取消</text>
+<text x="56" y="324" class="body">记录进度、结果与错误。</text>
+<text x="56" y="364" class="body">运行完成只表示这次处理已结束。</text>
+
+<rect x="32" y="452" width="656" height="270" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="472" width="224" height="36" rx="9" fill="#fff4df"/><text x="66" y="498" class="label" style="fill:#865b18">人工流程 · 可选</text><text x="56" y="552" class="card-title">开启人工暂停后，等待谁决定？</text>
+<text x="56" y="596" class="body">暂停并保存恢复点 → 人工提交决定</text>
+<text x="56" y="636" class="body">检查版本 → 恢复执行 → 完成 / 失败</text>
+<text x="56" y="676" class="body">版本冲突返回 409，重新读取当前流程。</text>
+
+<rect x="32" y="764" width="656" height="270" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="784" width="148" height="36" rx="9" fill="#e8f4f0"/><text x="66" y="810" class="label" style="fill:#176558">ERP 审批</text><text x="56" y="864" class="card-title">单据最终是否放行？</text>
+<text x="56" y="908" class="body">审核意见与人工备注可以回写。</text>
+<text x="56" y="948" class="body">最终审批状态由人操作。</text>
+<text x="56" y="988" class="body">机器建议不会自动把待审单改为通过。</text>
+<text x="36" y="1082" class="note">普通任务与人工流程使用不同记录。</text>
+<text x="36" y="1117" class="note">网页 Demo 仅在内存模拟，刷新即重置。</text>
+</svg>
+
+

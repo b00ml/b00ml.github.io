@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1230" viewBox="0 0 720 1230" role="img" aria-labelledby="title desc"><title id="title">10 元交通费，怎样查到人工这一步</title><desc id="desc">合成案例 · 网页按预设内容展示查证过程</desc><style>text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif;fill:#233831}.heading{font-size:36px;font-weight:700}.sub{font-size:25px;fill:#61716d}.label{font-size:23px;font-weight:700}.card-title{font-size:30px;font-weight:700}.body{font-size:28px}.note{font-size:25px;fill:#61716d}</style><rect width="720" height="1230" rx="24" fill="#f7f9f7"/><text x="36" y="65" class="heading">10 元交通费，怎样查到人工这一步</text><text x="36" y="107" class="sub">合成案例 · 网页按预设内容展示查证过程</text>
+<rect x="32" y="140" width="656" height="188" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="160" width="176" height="36" rx="9" fill="#fff4df"/><text x="66" y="186" class="label" style="fill:#865b18">01 发现疑问</text><text x="56" y="240" class="card-title">规则存疑，AI 初始倾向通过</text>
+<text x="56" y="284" class="body">城市标准缺失；金额小并不能补齐依据。</text>
+<path d="M360 336v20m-7-7 7 7 7-7" fill="none" stroke="#91a79d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="32" y="370" width="656" height="226" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="390" width="176" height="36" rx="9" fill="#e8f4f0"/><text x="66" y="416" class="label" style="fill:#176558">02 查证经过</text><text x="56" y="470" class="card-title">分别查制度与票面</text>
+<text x="56" y="514" class="body">制度：分歧需交人工复核。</text>
+<text x="56" y="554" class="body">票面：金额为 10 元，与报销金额一致。</text>
+<path d="M360 604v20m-7-7 7 7 7-7" fill="none" stroke="#91a79d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="32" y="638" width="656" height="226" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="658" width="176" height="36" rx="9" fill="#e8f4f0"/><text x="66" y="684" class="label" style="fill:#176558">03 核验证据</text><text x="56" y="738" class="card-title">能追溯的保留，缺出处的不采纳</text>
+<text x="56" y="782" class="body">票面和条款可以回溯到工具返回。</text>
+<text x="56" y="822" class="body">声称找到城市标准的引用没有出处。</text>
+<path d="M360 872v20m-7-7 7 7 7-7" fill="none" stroke="#91a79d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="32" y="906" width="656" height="226" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="926" width="176" height="36" rx="9" fill="#fff4df"/><text x="66" y="952" class="label" style="fill:#865b18">04 交给人工</text><text x="56" y="1006" class="card-title">保留存疑，确认适用标准</text>
+<text x="56" y="1050" class="body">财务核实标准后再决定是否放行。</text>
+<text x="56" y="1090" class="body">系统只回写意见，ERP 审批仍由人操作。</text>
+<text x="36" y="1180" class="note">查到金额相符 ≠ 已经确认合规</text>
+</svg>
+
+

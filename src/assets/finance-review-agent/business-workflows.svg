@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1190" viewBox="0 0 720 1190" role="img" aria-labelledby="title desc"><title id="title">三条链路，交付三类可接手结果</title><desc id="desc">原 POC 处理示意 · 网页 Demo 展示预设结果</desc><style>text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif;fill:#233831}.heading{font-size:36px;font-weight:700}.sub{font-size:25px;fill:#61716d}.label{font-size:23px;font-weight:700}.card-title{font-size:30px;font-weight:700}.body{font-size:28px}.note{font-size:25px;fill:#61716d}</style><rect width="720" height="1190" rx="24" fill="#f7f9f7"/><text x="36" y="65" class="heading">三条链路，交付三类可接手结果</text><text x="36" y="107" class="sub">原 POC 处理示意 · 网页 Demo 展示预设结果</text>
+<rect x="32" y="140" width="656" height="310" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="160" width="184" height="36" rx="9" fill="#e8f4f0"/><text x="66" y="186" class="label" style="fill:#176558">M2 报销审核</text><text x="56" y="240" class="card-title">从单据与附件，到审核意见</text>
+<text x="56" y="284" class="body">输入：报销单、审批、附件、发票台账</text>
+<text x="56" y="324" class="body">处理：本地 OCR → 规则 → 可选 AI 复核</text>
+<text x="56" y="364" class="body">交付：建议、理由、票面字段</text>
+<text x="56" y="404" class="body">人工：补证、核标准、记录决定</text>
+
+<rect x="32" y="492" width="656" height="310" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="512" width="184" height="36" rx="9" fill="#e8f4f0"/><text x="66" y="538" class="label" style="fill:#176558">M3 发票稽核</text><text x="56" y="592" class="card-title">从结构化台账，到异常清单</text>
+<text x="56" y="636" class="body">输入：已有结构化发票台账与票面数据</text>
+<text x="56" y="676" class="body">处理：规则扫描 → 可选逐条 AI 复核</text>
+<text x="56" y="716" class="body">交付：可下钻的疑点与复核意见</text>
+<text x="56" y="756" class="body">人工：核实原记录，确认是否成立</text>
+
+<rect x="32" y="844" width="656" height="310" rx="18" fill="white" stroke="#d6e1dc"/><rect x="52" y="864" width="184" height="36" rx="9" fill="#eef1f5"/><text x="66" y="890" class="label" style="fill:#45566b">M4 银行对账</text><text x="56" y="944" class="card-title">从流水与应收，到匹配及例外</text>
+<text x="56" y="988" class="body">输入：贷方流水、应收、客户别名</text>
+<text x="56" y="1028" class="body">处理：名称识别、金额核对、候选消歧</text>
+<text x="56" y="1068" class="body">交付：匹配建议与按原因分类的例外</text>
+<text x="56" y="1108" class="body">人工：认领、核对差额和多候选</text>
+</svg>
+
+
