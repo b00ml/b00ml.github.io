@@ -30,6 +30,7 @@
     }
   },
   "exclude": [
+    "apps/finance-demo",
     "node_modules",
     "**/node_modules/*",
     ".vscode",

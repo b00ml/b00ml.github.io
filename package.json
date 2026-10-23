@@ -7,7 +7,7 @@
     "dev": "astro dev",
     "test": "bun test src/",
     "dev:check": "astro check --watch & astro dev",
-    "build": "node scripts/clean-content-cache.mjs && astro build",
+    "build": "node scripts/clean-content-cache.mjs && astro build && bun run --cwd apps/finance-demo build",
     "build:checked": "bun run check && bun run build",
     "publish": "node scripts/publish.mjs",
     "ingest": "node scripts/ingest.mjs",
@@ -20,7 +20,9 @@
     "format": "prettier --write  '**/*.{js,jsx,ts,tsx,md,mdx,astro}'",
     "lint": "eslint --fix 'src/**/*.{js,ts,jsx,tsx,astro}'",
     "yijiansilian": "bun lint && bun sync && bun check && bun format",
-    "clean": "rm -rf .astro dist node_modules/.astro"
+    "clean": "rm -rf .astro dist node_modules/.astro",
+    "demo:dev": "bun run --cwd apps/finance-demo dev",
+    "demo:test": "bun run --cwd apps/finance-demo test"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",

@@ -1,12 +1,12 @@
 ---
 import type { CollectionEntry } from 'astro:content'
 import { getCollection } from 'astro:content'
-
-import PageLayout from '@/layouts/BaseLayout.astro'
-import { Button } from 'astro-pure/user'
-import { sectionMetadata } from '@/lib/seo/metadata'
 import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
 import { STATUS_LABELS, STATUS_NOTE, STATUS_ORDER, type ProjectStatus } from '@/lib/projects/status'
+import { sectionMetadata } from '@/lib/seo/metadata'
+
+import { Button } from 'astro-pure/user'
+import PageLayout from '@/layouts/BaseLayout.astro'
 
 /**
  * Projects - /projects
@@ -58,7 +58,11 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
         </div>
       </div>
       <p class='max-w-3xl text-muted-foreground'>
-        这里放我做过的项目：一句话说清它是什么、我负责哪一段、关键取舍是什么、现在是什么状态。一篇讲不完的会拆成几篇，从总览进去逐篇读。想看我拆别人的产品，去 <a href='/product' class='underline underline-offset-4'>Product</a>；想看我最近在想什么，去 <a href='/blog' class='underline underline-offset-4'>Blog</a>。
+        这里放我做过的项目：一句话说清它是什么、我负责哪一段、关键取舍是什么、现在是什么状态。一篇讲不完的会拆成几篇，从总览进去逐篇读。想看我拆别人的产品，去
+        <a href='/product' class='underline underline-offset-4'>Product</a>；想看我最近在想什么，去 <a
+          href='/blog'
+          class='underline underline-offset-4'>Blog</a
+        >。
       </p>
     </div>
 
@@ -76,10 +80,15 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
 
           <ul class='grid gap-4 sm:grid-cols-2'>
             {group.entries.map((entry) => (
-              <li>
+              <li
+                class:list={[
+                  'project-entry',
+                  { 'with-demo': projectRootId(entry) === 'finance-review-agent' }
+                ]}
+              >
                 <a
                   href={`/projects/${projectPath(entry)}`}
-                  class='group flex h-full flex-col gap-2 rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'
+                  class='project-card group flex h-full flex-col gap-2 rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'
                   data-astro-prefetch
                 >
                   <div class='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
@@ -103,6 +112,16 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
                     </div>
                   )}
                 </a>
+                {projectRootId(entry) === 'finance-review-agent' && (
+                  <a
+                    class='demo-link'
+                    href='/projects/finance-review-agent/demo/'
+                    aria-label='体验财务 Agent Demo'
+                  >
+                    <span>Demo ↗</span>
+                    <span class='demo-caption'>虚拟数据 · 交互体验</span>
+                  </a>
+                )}
               </li>
             ))}
           </ul>
@@ -118,3 +137,49 @@ function metaLine(entry: CollectionEntry<'projects'>): string {
     </div>
   </main>
 </PageLayout>
+
+<style>
+  .project-entry {
+    min-width: 0;
+  }
+  .with-demo {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .with-demo .project-card {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+  }
+  .demo-link {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .demo-link:hover {
+    background: hsl(var(--muted));
+    color: #087e68;
+  }
+  .demo-caption {
+    font-size: 0.65rem;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  @media (max-width: 639px) {
+    .with-demo {
+      flex-direction: column;
+    }
+    .demo-link {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+</style>

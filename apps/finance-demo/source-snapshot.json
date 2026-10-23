@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/b00ml/AI-financialAgent-POC",
+  "commit": "55599517d7bd821264090a59b6866a179151bcab",
+  "workingTreeOverrides": [
+    "frontend/src/stores/audit.js",
+    "frontend/src/stores/connection.js",
+    "frontend/src/views/M2Detail.vue",
+    "frontend/src/views/M3Anomaly.vue",
+    "frontend/src/views/M4Analytics.vue"
+  ],
+  "sha256BeforeAdaptation": {
+    "frontend/src/api/index.js": "e81e6b3fb867bc24ec5ee01742169e8d939084f0d8ce46cde34c7848123902bd",
+    "frontend/src/App.vue": "2be0b617a7fc9cdb95132017a1f735c421fee40ab3f5f9b237b2deedb9122c11",
+    "frontend/src/components/AIAdvice.vue": "8dca23e60b813898ec6a327cd54019920e1a5a2f981b87e3ec3aca547406818f",
+    "frontend/src/components/ClaimTable.vue": "df61447d68d03f8eaaca82240a301eab8d62edf8e451bba647012447b16d4d08",
+    "frontend/src/components/InvoiceCompare.vue": "7f8e5676808514f876cf3b1ccb91e459abc07faa2355e4661ccb408087f6682c",
+    "frontend/src/components/ReviewPanel.vue": "c489d6e4692cab510e39c63bdaa54b0fe91a16239599f08ece29136e31d33903",
+    "frontend/src/components/SideNav.vue": "064bda64cf27d4b61bc10cc612c7383fb1eecf0736b085744ffaf4c2674eba5c",
+    "frontend/src/components/StatsCards.vue": "c6451b3939985b8d96c789fa9b9f99073240012819b138a7839ee10b2fe771d9",
+    "frontend/src/components/StatusBadge.vue": "6d4e9a5ad82dfd6dc81a8f6516007e7a7689d70853ac8ed5a7468771fb1a3449",
+    "frontend/src/main.js": "5f693a21ca5caf0ac5aea2d55fbd4c8faf7fa4d6ce87bbf4869ec8099a9f9a2a",
+    "frontend/src/router/index.js": "36cc21edbbea807ef9d4c1e61e4e3e6001066263e9d6d333f89c2363346757f3",
+    "frontend/src/stores/audit.js": "b4602987a607f0cee7b8e7f59b1236d21717e6b30d27d501e6b477b0cee55d5c",
+    "frontend/src/stores/connection.js": "9f6d0b293a46fd5be1aa45ae9bdca8c89558fcbdbc921ee190fbf3a4280565c8",
+    "frontend/src/style.css": "19815bc830345778392d5fbc1a442489e64a55b264ea395b2bbf833eb3d3135d",
+    "frontend/src/views/M2Audit.vue": "f08592e49daf64a3d625f869065039a87958e4402e4fc423a554a4a97ae24c47",
+    "frontend/src/views/M2Detail.vue": "da40128527d99bf98eb8fe4b19e15311eb5366c935b6a2331243eaa15dc16c79",
+    "frontend/src/views/M3Anomaly.vue": "02f559a589173491ff4b7a6f897bcf3d6c53d2e3f73460c70d60aff68c626320",
+    "frontend/src/views/M4Analytics.vue": "1c87aba223e55a9d4fa59b74652e4c7ef714d936a70c2bde8d7b355ae0c55392",
+    "frontend/src/views/Settings.vue": "0bc8d645803ce713cd09b1f88e4b80153f2999c99939ec8838ba18810e655754"
+  }
+}
