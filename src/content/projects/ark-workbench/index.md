@@ -38,12 +38,20 @@ links: []
 - [一条事实要过几道门才允许被读出来](/projects/ark-workbench/memory)：模型提候选、人审激活、按 purpose 读门禁、失效按序传播。
 - [我怎么证明它真的能跑](/projects/ark-workbench/evidence)：七层证据、候选身份绑定、能下和不能下的结论。
 
+<iframe src="/diagrams/ark-architecture.html" title="Ark 知识工作台系统架构（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图：系统架构（交互版）。对话主链路是 Ark/QQ → /v1/responses → Runner → ToolRegistry → Brain MCP → Vault；右上角可切换深浅主题，可按对话/内容/记忆三条链路聚焦查看。[在新窗口打开](/diagrams/ark-architecture.html)可缩放与导出。_
+
 ## 做到什么程度
 
 四段链路都能跑通，运行时五段治理齐备，写入有唯一受控路径。记忆层是完整的：模型只能提候选，激活要过人审，读取要报 purpose，失效按 suppression → Markdown → RAG → session range → outbox 的顺序传播。旧库迁移做完了：155 个文件、563 条记录，带 manifest、逐文件 hash 和 CAS 回滚。
+
+内容入口现在是四个：B 站、文章、邮件，加上手工收录的 Coding Agent 复盘。收录的是我选定的记录，来源、决策理由、验证和失败尝试落在 Markdown 真源上；Agent 端只拿到一个只读查询工具，不自动收集我的会话。
+
+入口还多了一个 QQ。本人私聊和每个白名单群各接一个受限的 Serve 实例：私聊默认纯聊天，群 @ 走只读知识检索——目录即授权，引用必须来自本轮证据并附逐字摘录，证据不足就明说。消息有独立的事件账本：确认成功才记已发送，重启不重放。这条线十月下旬通过了本人私聊的真实验收（真实 QQ、真实付费调用四问全对），群聊和跨成员还没验，费用先手动控制。
 
 评测这块我按七层记证据：候选必须绑上 candidate_id、git commit、build sha256、任务集 hash 和源报告 SHA-256，才算一次可以横向比较的读数。
 
 ## 适用范围
 
-它解决的是个人上下文这一层，单人、本机 Vault、自己写的笔记。团队协作、多人权限、云端同步不在范围内——那是另一种产品，加进来会把这条链路撑散。
+它解决的是个人上下文这一层，单人、本机 Vault、自己写的笔记。团队协作、多人权限、云端同步不在范围内——那是另一种产品，加进来会把这条链路撑散。QQ 那个入口看着像多人，其实还是单操作者：谁能问、能读到什么，由本机白名单和授权目录决定。

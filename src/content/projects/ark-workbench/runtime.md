@@ -16,6 +16,10 @@ Serve 的主要路由不多：`POST /v1/responses` 接对话和 SSE，`POST /v1/
 
 project_id 先做安全化再进入检索范围和路径，客户端给的任意字符串不能直接拼进去。准入检查授权头、request id、project/session scope、输入长度、能力和并发预算边界。过了这一关，只说明请求有资格进运行时。
 
+<iframe src="/diagrams/ark-response-sequence.html" title="一次 /v1/responses 请求的生命周期时序（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图：一次带写工具的请求全链路（交互版）。三个阶段分段：准入与幂等 / 模型循环与审批 / 收尾；写工具触发审批往返，经 Brain MCP 写 Vault（CAS）。[在新窗口打开](/diagrams/ark-response-sequence.html)可缩放与导出。_
+
 ## 步数、取消、fallback 三个边界
 
 第一个是步数。max_steps 管的是回合，一次模型响应可能带好几个工具调用，所以还得有 max_tool_calls；此外还有 max_tool_result_chars、context budget、output reserve、deadline 和上下文压缩的限制。只看步数推不出成本。
@@ -49,5 +53,21 @@ ApprovalManager 管 read 直接放行、write 和 danger 等 Ark 回来 resolve�
 账本的状态是 planned、authorized、approved、leased、executing、verifying、succeeded，旁支 failed、cancelled、unknown。authorized 是系统权限条件，不是人审；approved 是审批决定；executing 只说明开始了，不证明完成；verifying 是执行返回后的核验。
 
 unknown 不是失败，也不是「可以再试一次」。它表示没有证据判断这次外部动作到底有没有发生，只能靠查询外部状态或拿到确定性的本地产物证据，走 reconcile 收敛。任务表里也会存一份工具状态的投影，但那份是兼容用的，真正的放行依据在账本上，两者靠 task id 和 operation id 关联。任务表自己用 state_version 做乐观锁，旧 checkpoint 写回失败要 fail closed，不能静默覆盖新版本。
+
+<iframe src="/diagrams/ark-operation-ledger.html" title="OperationLedger 外部副作用状态机（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图：副作用账本状态机（交互版）。主路径 planned → authorized → leased → executing → verifying → succeeded，approved 人审门为支线；任意非终态可进 unknown 恢复屏障，只能凭证据 reconcile 收敛。[在新窗口打开](/diagrams/ark-operation-ledger.html)可缩放与导出。_
+
+## QQ 是另一条入口，不是另一套运行时
+
+官方 QQ 的消息从 NoneBot 适配器进来，过一个不依赖平台 SDK 的 HTTP 桥接，落到的还是上面这套 Serve。桥接从平台、Bot、会话身份派生稳定的请求键和会话键，复用同一套幂等入口。
+
+私聊默认 chat_only：不是给模型一张空工具名单，而是整段关闭工具注册表、上下文工具、长期召回和记忆采集——空名单只是「看不见」，关闭才是「不存在」。请求带多分支并行就直接 400。
+
+群 @ 走的是受限知识实例：宿主指定一个授权目录和一个分离的状态目录，整个实例永久只有两个只读工具（检索、读原文），读原文只接受本轮检索返回的 opaque ref，不接受路径。回答发出去之前过最后一道结构化支持检查：结论、引用、逐字摘录对得上才发，对不上就回「资料不足」——闲聊不能伪装成知识结论。白名单群成员有跨群生效的 30 秒限频，绑定主人豁免，主人是费用责任人。
+
+消息本身有一本独立的事件账本，在调模型之前先落库。同一事件重复投递静默跳过；执行到一半进程死了，账本停在 unknown，重启不补跑——宁可保留一条没送达的回答，也不冒第二次扣费的风险。这条是修过才稳的：改之前同一消息并发进来，模型调一次、QQ 发三次。
+
+这条线的验收分两层：隔离工程测试把真实 SDK 到真实 Runner 的链路全跑通，外部只替换 QQ 和模型 HTTP；真实环境先过了本人私聊四问。群聊、跨成员、真实重启还没验收，费用没有自动限额，我看着控制台手动停。
 
 这一层怎么留证据，见[我怎么证明它真的能跑](/projects/ark-workbench/evidence)。

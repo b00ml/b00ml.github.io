@@ -6,7 +6,7 @@ order: 1
 summary: 摄入与编译
 ---
 
-内容从三个地方进来：B 站链接、公众号文章、Agent Mail 里的链接。落盘规则是同一条，中间的处理链不是一条。
+内容从四个地方进来：B 站链接、公众号文章、Agent Mail 里的链接、手工收录的 Coding Agent 复盘。落盘规则是同一条，中间的处理链不是一条。
 
 ## 一条字幕要过三层降级
 
@@ -29,6 +29,8 @@ B 站那条的顺序是：缓存命中、B 站 API 字幕、yt-dlp 字幕、Whis
 两个细节是后来补的。一封邮件只取第一个白名单 URL，多出来的不猜；没有白名单 URL 的邮件也标记已处理，否则每次轮询都重新扫一遍。去重同时靠 `inbox_task.dedupe_key` 的 UNIQUE 约束和 `inbox_seen.marker`——应用层「查到没有」不算数。
 
 非 dry-run 的收件可以先记一条 `inbox_operation`：`begin_collection(before_hash)`、读外部邮件、入队、`complete_collection(after_hash)`。那个 hash 是队列快照摘要，它回答的是「这一次收件变了多少」。
+
+第四个入口是我手工选定的 Coding Agent 复盘。收录走同一条受控写入，正文是真源 Markdown，带来源、场景、决策理由、验证方式和失败的尝试，支持修订、过期和撤回；Agent 端拿到的是一个只读查询工具，按项目、阶段、任务类型检索。它不自动收集我的会话——收录与否由我决定，这一条边界不放开。
 
 ## 写入只留一条路
 

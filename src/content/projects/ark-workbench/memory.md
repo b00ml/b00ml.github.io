@@ -24,6 +24,12 @@ decide() 会校验本地 principal、reason、expected_content_hash、expected_r
 
 activate() 也不是把 approval_state 换个字符串。它重新验批准回执、事实、冲突、策略和同意，然后写 status=active、approval_state=activated、source_committed=true、index_status=pending。所以「已激活」和「已索引」是两件事：索引失败不该把一条人工确认过的事实撤掉。
 
+审核回执现在还顺带产出学习样本：符合首审条件的 approve/replace 记 1，reject/keep_old 记 0，编辑过的和生命周期动作不冒充标签。样本不复制正文，只存结构特征——现在只是采着，没接任何自动审核。
+
+<iframe src="/diagrams/ark-memory-governance.html" title="长期记忆治理生命周期（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图：记忆治理生命周期（交互版）。主路径 durable 事件 → candidate → 人审 → approved（staged）→ active，reject/superseded/revoked/expired/deleted 为分支，恢复须重审（虚线）。[在新窗口打开](/diagrams/ark-memory-governance.html)可缩放与导出。_
+
 ## 读的时候先报 purpose
 
 统一读门禁的 purpose 只有 profile、project、search、embedding、history、admin，不认识的直接拒。检查项按顺序是：事务挂起与读阻塞、schema 版本、旧库退休标记、owner 和 vault_namespace、作用域、状态与有效期、回执与来源完整性、敏感等级与同意、expected_etag 和派生版本。
@@ -45,3 +51,5 @@ reconcile 会复查 ready 项的源、期限和同意，embedding fingerprint �
 hybrid 融合先对每个 route 按 entry、file、ref 去重，再算 score = Σ 1 / (rrf_k + rank)。这是排名票数的倒数相加，不是相似度概率；一个月桶里的多个 chunk 也不能在同一条路线上重复投票。
 
 answer gate 只有在 on 模式才影响最终输出，shadow 的读数不进生产拒绝。这条分开之后，诊断读数和发布门禁各归各的。
+
+这一段里还有三条规则是修过才有的：主题词（比如「长期记忆」四个字）不能把普通知识查询误路由进个人记忆目录；shadow 观测只能看，不能回头改写主结果；只有标题或分隔线的切块不进候选。它们不是设计出来的，是各自出过一次错。
