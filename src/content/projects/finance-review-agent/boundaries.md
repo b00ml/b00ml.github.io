@@ -38,6 +38,12 @@ OCR 取回的是证据字段，规则再做比较。附件缺失、识别失败�
 
 原 POC 的图模式还包含调查后的裁决节点。调查提出“建议通过”或“建议驳回”时，裁决节点把需要关注的单据保留为 FLAG；调查结论为维持规则意见时，保留调查前已经形成的建议；分歧单仍维持 FLAG。这样，模型可以提出新线索，ERP 的审批操作仍由人完成。
 
+这条图管线的完整走向如下：分歧或存疑单进入受控调查，Agent 在只读工具与预算约束内循环取证，裁决只向 FLAG 方向推进；开启人工 gate 时流程在终审处暂停，等前端复核页注入决定后再继续回写。
+
+<iframe src="/diagrams/qiheng-agent-workflow.html" title="M2 图管线：受控调查与人工终审（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图 2：M2 图管线工作流（交互版）。默认 legacy 管线不做调查；只有开启 M2_PIPELINE=graph 且 AGENT_INVESTIGATION_ENABLED=1 时，分歧或存疑单才走这条受控路径，调查的预算、grounding 与降级约束见图内卡片。[在新窗口打开](/diagrams/qiheng-agent-workflow.html)可缩放与导出。_
+
 在 10 元交通费案例里，查证后的新增信息是：
 
 - 制度检索返回了“分歧交人工复核”的条款。

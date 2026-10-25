@@ -23,6 +23,12 @@ _图 1：原 POC 的业务处理示意。每条链路都把人工接手点写进
 
 一项关键处理是发票代码与号码索引。同一张票出现在两张报销单上，索引键相同；结合台账中的使用次数，重复发票规则就有了判据。
 
+一张单据在系统里的完整数据旅程如下：附件图片进本地 OCR，票面字段与差异交规则引擎；发票台账导出后建全量索引供查重；初审结论与证据送给 DeepSeek 独立复核（单据字段外发，已在 submission 申报）；分歧或存疑单转入受控调查，调查报告并入结论；合并后意见回写 ERP，全量结果另出 submission.json。
+
+<iframe src="/diagrams/qiheng-claim-journey.html" title="一张报销单的审核旅程：M2 数据流（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图 2：M2 数据流（交互版）。从 ERP 数据源、识别与索引、规则审核、AI 复核与受控调查到回写与人工；主链、出域边界和 FLAG 人工接手点分别标注。[在新窗口打开](/diagrams/qiheng-claim-journey.html)可缩放与导出。_
+
 证据不足时，人工要接手的事项应当具体：附件下载失败需要补附件，OCR 失败需要核票面，城市标准缺失需要确认适用标准。在[10 元交通费案例](/projects/finance-review-agent/boundaries)中，金额已经核对过，缺口仍然是城市标准。
 
 [体验 M2](/projects/finance-review-agent/demo/#/m2)：选择六张样例单并点击“模拟批量审核”，会得到四条建议驳回、两条存疑。这个分布是固定样例的预期结果。

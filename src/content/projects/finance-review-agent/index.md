@@ -48,6 +48,14 @@ _图 1：六张合成单据得到四条建议驳回、两条存疑。机器建�
 
 三条链路的输入、失败出口和匹配条件，展开在[三条链路，三种难度](/projects/finance-review-agent/workflows)。
 
+## 系统全貌
+
+下面这张可交互架构图画的是原 POC 的真实组件结构：Vue 审核工作台与 Streamlit 运维台分别经 REST 和进程内调用进入 core 引擎；引擎内完成本地 OCR、规则审核与 AI 复核，分歧或存疑单可进入受控调查（LangGraph 图管线，只读工具取证），制度检索走本地知识库；审核意见回写 ERP，运行产物落盘 output。数据边界（哪些图片不出域、哪些字段外发需申报）直接标在图上。
+
+<iframe src="/diagrams/qiheng-architecture.html" title="启衡精密 AI 财务审核系统架构（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+
+_图 2：系统架构（交互版）。悬停节点与连线可聚焦查看，右上角可切换深浅主题；[在新窗口打开](/diagrams/qiheng-architecture.html)可缩放、搜索与导出。_
+
 ## 三个设计取舍
 
 **规则覆盖全量，模型补充第二意见。** 可以明确比较的字段交给规则。规则和模型不一致时保留人工关注，模型调用失败时回到规则意见。
