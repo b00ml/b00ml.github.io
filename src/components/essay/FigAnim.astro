@@ -1,0 +1,48 @@
+/**
+ * Scroll-triggered animation for essay figures and the .mark highlighter.
+ * No-op on pages without `[data-anim]` figures / `.mark` spans. Figures are
+ * armed by this script and played once when scrolled into view; the replay
+ * button re-runs the transition. Honors prefers-reduced-motion (CSS shows the
+ * final state, replay buttons are hidden).
+ */
+<script>
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const observe = (el: Element, fn: () => void, threshold: number) => {
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            fn()
+            obs.disconnect()
+          }
+        })
+      },
+      { threshold }
+    )
+    io.observe(el)
+  }
+
+  document.querySelectorAll<HTMLElement>('.prose .mark').forEach((m) => {
+    if (still) m.classList.add('on')
+    else observe(m, () => m.classList.add('on'), 1)
+  })
+
+  document.querySelectorAll<HTMLElement>('.prose figure[data-anim]').forEach((f) => {
+    if (still) return
+    f.classList.add('armed')
+    const play = () => {
+      f.classList.remove('play')
+      void f.getBoundingClientRect()
+      f.classList.add('play')
+    }
+    observe(f, play, 0.35)
+    const rb = f.querySelector<HTMLButtonElement>('.replay')
+    if (rb)
+      rb.onclick = () => {
+        f.classList.remove('play')
+        requestAnimationFrame(() => requestAnimationFrame(play))
+      }
+  })
+
+  if (still) document.querySelectorAll<HTMLElement>('.prose .replay').forEach((b) => (b.hidden = true))
+</script>

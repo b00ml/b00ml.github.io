@@ -336,3 +336,383 @@ body::-webkit-scrollbar {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ============================================================
+   Essay components — ported from the blog-style-html drafts.
+   Scoped to .prose; colours ride the site's HSL tokens so the
+   .dark class switches them automatically. Mono is a system
+   stack (no extra webfont).
+   ============================================================ */
+:root {
+  --essay-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+/* callout (TL;DR) */
+.prose .callout {
+  background: hsl(var(--primary) / 0.1);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.4rem;
+  margin: 0 0 2.25rem;
+  color: hsl(var(--foreground));
+}
+.prose .callout .lbl {
+  display: block;
+  font: 500 12px/1 var(--essay-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+  margin-bottom: 0.6rem;
+}
+.prose .callout p {
+  margin: 0;
+}
+/* highlighter */
+.prose .mark {
+  color: hsl(var(--foreground));
+  background: linear-gradient(#ffe08a, #ffe08a) 0 88% / 0 0.45em no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0 0.1em;
+  transition: background-size 0.8s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.prose .mark.on {
+  background-size: 100% 0.45em;
+}
+.dark .prose .mark {
+  background-image: linear-gradient(#7a611a, #7a611a);
+}
+/* pull quote */
+.prose .pull {
+  margin: 2rem 0;
+  text-align: center;
+  font-size: clamp(22px, 3.6vw, 28px);
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: hsl(var(--foreground));
+}
+.prose .pull::before,
+.prose .pull::after {
+  content: '';
+  display: block;
+  width: 2.5rem;
+  height: 1px;
+  background: hsl(var(--primary));
+  margin: 0 auto 1.1rem;
+}
+.prose .pull::after {
+  margin: 1.1rem auto 0;
+}
+/* quote cards */
+.prose .replies {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1.5rem 0 2rem;
+}
+.prose .reply {
+  margin: 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+.prose .reply blockquote {
+  margin: 0 0 0.7rem;
+  color: hsl(var(--foreground));
+  font-size: 16px;
+  line-height: 1.65;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  border-radius: 0;
+}
+.prose .reply figcaption {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+.prose .reply .who {
+  font: 500 13px var(--essay-mono);
+  color: hsl(var(--foreground) / 0.8);
+}
+.prose .tag {
+  display: inline-block;
+  font: 500 11.5px/1.6 var(--essay-mono);
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  margin-right: 0.4rem;
+  vertical-align: 1px;
+}
+.prose .tag.pro {
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.45);
+}
+/* numbered steps */
+.prose ol.steps {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 2rem;
+  counter-reset: essay-steps;
+  display: grid;
+  gap: 0.75rem;
+}
+.prose ol.steps li {
+  counter-increment: essay-steps;
+  position: relative;
+  margin: 0;
+  padding: 0.9rem 1.1rem 0.9rem 3.4rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+}
+.prose ol.steps li::marker {
+  content: '';
+}
+.prose ol.steps li::before {
+  content: counter(essay-steps);
+  position: absolute;
+  left: 1rem;
+  top: 0.95rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  font: 600 13px/1 var(--essay-mono);
+}
+/* tables */
+.prose .table-wrap {
+  overflow-x: auto;
+  margin: 1.5rem 0 2rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+}
+.prose .table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0;
+}
+.prose .table-wrap th {
+  font: 500 12.5px/1.5 var(--essay-mono);
+  letter-spacing: 0.03em;
+  color: hsl(var(--muted-foreground));
+  text-align: left;
+  padding: 0.7rem 0.95rem;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--secondary));
+}
+.prose .table-wrap td {
+  padding: 0.6rem 0.95rem;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  vertical-align: top;
+}
+.prose .table-wrap tr:last-child td {
+  border-bottom: 0;
+}
+.prose .table-wrap tbody td:first-child {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  white-space: nowrap;
+}
+.prose .table-wrap.wide table {
+  min-width: 660px;
+}
+/* figures */
+.prose figure.fig {
+  margin: 2.5rem 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1.4rem 1.4rem 1rem;
+  color: hsl(var(--foreground));
+}
+.prose .fig svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.prose .fig text {
+  font-family: inherit;
+  font-size: 14px;
+  fill: hsl(var(--muted-foreground));
+}
+.prose .fig .t-ink {
+  fill: hsl(var(--foreground));
+  font-weight: 500;
+}
+.prose .fig .t-dim {
+  fill: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+.prose .fig .t-acc {
+  fill: hsl(var(--primary));
+  font-weight: 500;
+}
+.prose .fig figcaption {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid hsl(var(--border) / 0.5);
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  font-size: 14px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+.prose .fig figcaption b {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+.prose .replay {
+  flex: none;
+  font: 500 12px var(--essay-mono);
+  color: hsl(var(--muted-foreground));
+  background: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
+.prose .replay:hover {
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--muted-foreground));
+}
+/* svg primitives */
+.prose .s-axis {
+  fill: none;
+  stroke: hsl(var(--border));
+  stroke-width: 1.5;
+}
+.prose .s-grid {
+  fill: none;
+  stroke: hsl(var(--border) / 0.5);
+  stroke-width: 1;
+}
+.prose .s-ink {
+  fill: none;
+  stroke: hsl(var(--foreground));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.prose .s-acc {
+  fill: none;
+  stroke: hsl(var(--primary));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.prose .s-dim {
+  fill: none;
+  stroke: hsl(var(--muted-foreground));
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+}
+.prose .s-node {
+  fill: hsl(var(--secondary));
+  stroke: hsl(var(--border));
+  stroke-width: 1.2;
+}
+.prose .s-node-acc {
+  fill: hsl(var(--primary) / 0.12);
+  stroke: hsl(var(--primary));
+  stroke-width: 1.5;
+}
+.prose .s-pkt {
+  fill: hsl(var(--primary));
+}
+/* motion: armed → play when scrolled into view */
+.prose .armed .draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.prose .play .draw {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1.3s cubic-bezier(0.35, 0.1, 0.25, 1) var(--at, 0s);
+}
+.prose .armed .rise {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.prose .play .rise {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.5s ease var(--at, 0s),
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) var(--at, 0s);
+}
+.prose .armed .fade {
+  opacity: 0;
+}
+.prose .play .fade {
+  opacity: 1;
+  transition: opacity 0.5s ease var(--at, 0s);
+}
+.prose .play .flow {
+  offset-rotate: 0deg;
+  animation: essay-flow 3.2s linear var(--at, 0s) infinite;
+}
+.prose .flow {
+  opacity: 0;
+}
+@keyframes essay-flow {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+@media (max-width: 640px) {
+  .prose figure.fig {
+    padding: 1rem 0.9rem 0.8rem;
+  }
+  .prose .fig text {
+    font-size: 24px;
+  }
+  .prose .fig .t-dim {
+    font-size: 22px;
+  }
+  .prose .fig figcaption {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .prose ol.steps li {
+    padding-left: 3rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prose .mark {
+    background-size: 100% 0.45em;
+  }
+  .prose .armed .draw {
+    stroke-dashoffset: 0;
+  }
+  .prose .armed .rise,
+  .prose .armed .fade {
+    opacity: 1;
+    transform: none;
+  }
+  .prose .flow,
+  .prose .play .flow {
+    display: none;
+    animation: none;
+  }
+}

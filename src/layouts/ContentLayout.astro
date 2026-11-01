@@ -4,6 +4,7 @@ import { Button, Icon } from 'astro-pure/user'
 import { cn } from 'astro-pure/utils'
 import PageLayout from '@/layouts/BaseLayout.astro'
 import BackToTop from '@/components/navigation/BackToTop.astro'
+import FigAnim from '@/components/essay/FigAnim.astro'
 import { integ } from '@/site-config'
 
 interface Props {
@@ -62,6 +63,7 @@ const { meta, highlightColor, back = '/', ...props } = Astro.props
     </div>
   </div>
 
+  <FigAnim />
   <BackToTop header='content-header' content='content'>
     <button
       slot='other-icons'

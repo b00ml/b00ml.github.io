@@ -36,6 +36,32 @@ function remarkDropMdxImports() {
   }
 }
 
+// Post bodies use raw JSX elements (essay figures, callouts, tables). Plain
+// remark-rehype has no handler for `mdxJsx*` nodes: it drops their attributes
+// and renders them as bare `<div>`s, so feed readers lose the essay styling.
+// Translate JSX elements into regular hast elements, attributes included.
+type MdastJsxNode = {
+  type: 'mdxJsxFlowElement' | 'mdxJsxTextElement'
+  name?: string
+  attributes?: { type: string; name: string; value?: unknown }[]
+  children?: unknown[]
+}
+
+function mdxJsxToHast(state: any, node: MdastJsxNode) {
+  const properties: Record<string, string> = {}
+  for (const attr of node.attributes ?? []) {
+    if (attr.type === 'mdxJsxAttribute' && typeof attr.value === 'string') {
+      properties[attr.name] = attr.value
+    }
+  }
+  return {
+    type: 'element',
+    tagName: node.name || 'div',
+    properties,
+    children: state.all(node)
+  }
+}
+
 const renderContent = async (
   post: { id: string; body?: string; filePath?: string },
   site: URL
@@ -76,7 +102,12 @@ const renderContent = async (
   const file = await processor
     .use(remarkCjkFriendly)
     .use(remarkReplaceImageLink)
-    .use(remarkRehype)
+    .use(remarkRehype, {
+      handlers: {
+        mdxJsxFlowElement: mdxJsxToHast,
+        mdxJsxTextElement: mdxJsxToHast
+      }
+    })
     .use(rehypeStringify)
     .process(post.body ?? '')
 
