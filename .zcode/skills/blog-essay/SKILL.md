@@ -104,7 +104,13 @@ SVG 动图（配色一律用 token：`var(--primary)` / `hsl(var(--foreground))`
 每图 figcaption 说明该看什么。**动画由 FigAnim 自动接管，不要自己写 JS。**
 每页一个 marker id 前缀（`ahN` 的 N 递增），避免多图 marker 冲突。
 
-## 4. ⚠️ MDX 兼容规则（最重要的经验）
+## 4. ⚠️ Astro 组件规则
+
+`.astro` 组件里**标签之外的任何字符都会被渲染成页面内容**——JSDoc 注释写在
+`<script>` 前面，就会原样打印到每篇文章底部。组件说明一律放进 script 内部的
+JS 注释。
+
+## 5. ⚠️ MDX 兼容规则（最重要的经验）
 
 RSS 管线（`src/pages/rss.xml.ts`）用 **remarkMdx** 解析文章正文，违规写法会让
 RSS 静默缺失（构建只给一行 warning）。规则：
@@ -116,7 +122,7 @@ RSS 静默缺失（构建只给一行 warning）。规则：
    `<g class="rise"><text>x</text>` 换行继续 ❌；
 4. 引入任何新 HTML 模式前，先用 remarkMdx 单独跑一遍验证（三行脚本），再入库。
 
-## 5. QA（发布前必做）
+## 6. QA（发布前必做）
 
 1. 构建：`node scripts/clean-content-cache.mjs && npx astro build`；finance-demo
    子应用用 `~/.bun/bin/bun run --cwd apps/finance-demo build`（bash 里 bun 不在
@@ -128,7 +134,7 @@ RSS 静默缺失（构建只给一行 warning）。规则：
    正确、重播可用；`/blog` `/product` `/notes` 列表收录；只有 blog 进 `/rss.xml`。
 5. 现成脚本：`../_drafts/qa/qa-site.py`（改顶部 `PAGES` 数组即可复用）。
 
-## 6. 身份与页脚
+## 7. 身份与页脚
 
 站点页头/页脚由主题渲染（peik1 ↔ b00ml.github.io），正文里**不要**再写独立
 header/footer/版权行。
