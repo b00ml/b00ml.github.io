@@ -1,11 +1,9 @@
-/**
- * Scroll-triggered animation for essay figures and the .mark highlighter.
- * No-op on pages without `[data-anim]` figures / `.mark` spans. Figures are
- * armed by this script and played once when scrolled into view; the replay
- * button re-runs the transition. Honors prefers-reduced-motion (CSS shows the
- * final state, replay buttons are hidden).
- */
 <script>
+  // Scroll-triggered animation for essay figures and the .mark highlighter.
+  // No-op on pages without [data-anim] figures / .mark spans. Figures are
+  // armed by this script and played once when scrolled into view; the replay
+  // button re-runs the transition. Honors prefers-reduced-motion (the CSS
+  // shows the final state; replay buttons are hidden).
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches
   const observe = (el: Element, fn: () => void, threshold: number) => {
     const io = new IntersectionObserver(
