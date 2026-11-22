@@ -11,15 +11,27 @@ describe('section metadata', () => {
     expect(about?.description).toContain('能力')
     expect(about?.description).toContain('项目')
     expect(sectionMetadata('/product')?.title).toBe('产品')
+    expect(sectionMetadata('/product/tags')?.title).toBe('产品标签')
     expect(sectionMetadata('/blog/existing/post')).toBeUndefined()
     expect(listingMetadata('notes', 2, ['实际笔记标题'], 'ai').title).toBe(
       '笔记 · ai 标签 · 第 2 页'
+    )
+    expect(listingMetadata('product', 1, ['三个集合怎么分'], '产品').title).toBe(
+      '产品 · 产品 标签 · 第 1 页'
     )
     expect(listingMetadata('blog', 1, ['Real article']).description).toContain('Real article')
   })
 
   test('section copy never advertises discontinued services', () => {
-    for (const path of ['/', '/about', '/projects', '/product', '/tags', '/notes/tags']) {
+    for (const path of [
+      '/',
+      '/about',
+      '/projects',
+      '/product',
+      '/tags',
+      '/notes/tags',
+      '/product/tags'
+    ]) {
       const description = sectionMetadata(path)?.description
       expect(description).toBeTruthy()
       expect(description).not.toMatch(

@@ -1,0 +1,154 @@
+---
+/**
+ * Product Tag Filter Page with Pagination
+ * Shows published product entries filtered by tag
+ */
+import type { GetStaticPaths, Page } from 'astro'
+import { getCollection, type CollectionEntry } from 'astro:content'
+import { published } from '@/lib/seo/drafts'
+import { listingMetadata } from '@/lib/seo/metadata'
+
+import { Button, Icon } from 'astro-pure/user'
+import PageLayout from '@/layouts/BaseLayout.astro'
+import Paginator from '@/components/pure/Paginator.astro'
+
+export const prerender = true
+
+export const getStaticPaths = (async ({ paginate }) => {
+  const allEntries = (await getCollection('product')).filter(published)
+  const uniqueTags = [...new Set(allEntries.flatMap((entry) => entry.data.tags))]
+
+  return uniqueTags.flatMap((tag) => {
+    const filteredEntries = allEntries
+      .filter((entry) => entry.data.tags.includes(tag))
+      .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
+
+    return paginate(filteredEntries, {
+      params: { tag },
+      pageSize: 10
+    })
+  })
+}) satisfies GetStaticPaths
+
+interface Props {
+  page: Page<CollectionEntry<'product'>>
+}
+
+const { page } = Astro.props
+const { tag } = Astro.params
+
+const meta = listingMetadata(
+  'product',
+  page.currentPage,
+  page.data.map((entry) => entry.data.title),
+  tag
+)
+
+const paginationProps = {
+  ...(page.url.prev && {
+    prevUrl: {
+      text: '← 上一页',
+      url: page.url.prev
+    }
+  }),
+  ...(page.url.next && {
+    nextUrl: {
+      text: '下一页 →',
+      url: page.url.next
+    }
+  })
+}
+---
+
+<PageLayout {meta}>
+  <Button title='返回产品思考' href='/product' style='back' />
+
+  <main class='mt-6 lg:mt-10'>
+    <div id='content-header' class='animate'>
+      <div class='mb-2 flex items-center gap-2'>
+        <Icon name='tag-2' class='text-muted-foreground' />
+        <h1 class='text-3xl font-medium'>{tag}</h1>
+      </div>
+      <p class='mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground'>
+        <span>共 {page.total} 篇带此标签的产品思考</span>
+        <a
+          href='/product/tags'
+          class='text-sm text-muted-foreground transition hover:text-foreground'
+          data-astro-prefetch
+        >
+          查看全部标签 →
+        </a>
+      </p>
+    </div>
+
+    <section id='content' class='animate' aria-label='产品思考列表'>
+      <ul class='flex flex-col gap-y-4 text-start'>
+        {
+          page.data.map((entry) => (
+            <li class='rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'>
+              <a
+                href={`/product/${entry.id}`}
+                class='group/link block space-y-2'
+                data-astro-prefetch
+              >
+                <h2 class='text-lg font-medium leading-tight text-foreground transition-colors group-hover/link:text-primary'>
+                  {entry.data.title}
+                </h2>
+                {entry.data.description && (
+                  <p class='text-sm leading-6 text-muted-foreground'>{entry.data.description}</p>
+                )}
+                <div class='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
+                  <time datetime={entry.data.pubDate.toISOString()}>
+                    {entry.data.pubDate.toLocaleDateString('zh-CN', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </time>
+                  {entry.data.updatedDate && (
+                    <span>
+                      · 更新于{' '}
+                      {entry.data.updatedDate.toLocaleDateString('zh-CN', {
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  )}
+                </div>
+              </a>
+              {entry.data.tags.length > 0 && (
+                <ul class='mt-3 flex flex-wrap gap-1.5'>
+                  {entry.data.tags.map((itemTag: string) => (
+                    <li>
+                      <a
+                        href={`/product/tags/${itemTag}`}
+                        aria-current={itemTag === tag ? 'page' : undefined}
+                        class:list={[
+                          'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs transition',
+                          itemTag === tag
+                            ? 'border-foreground/25 bg-muted font-medium text-foreground'
+                            : 'border-border bg-muted/60 text-muted-foreground hover:border-foreground/25 hover:bg-muted hover:text-foreground'
+                        ]}
+                        data-astro-prefetch
+                      >
+                        {itemTag}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+
+      {
+        page.lastPage > 1 && (
+          <div class='mt-8'>
+            <Paginator {...paginationProps} />
+          </div>
+        )
+      }
+    </section>
+  </main>
+</PageLayout>

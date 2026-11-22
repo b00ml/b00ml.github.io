@@ -1,0 +1,77 @@
+---
+/**
+ * Product Tags Index
+ * Shows all tags used in published product entries with entry counts
+ */
+import { getCollection } from 'astro:content'
+import { published } from '@/lib/seo/drafts'
+import { sectionMetadata } from '@/lib/seo/metadata'
+
+import { Button, Icon } from 'astro-pure/user'
+import PageLayout from '@/layouts/BaseLayout.astro'
+
+export const prerender = true
+
+const allEntries = (await getCollection('product')).filter(published)
+
+const tagCounts = allEntries.reduce(
+  (acc, entry) => {
+    entry.data.tags.forEach((tag) => {
+      acc[tag] = (acc[tag] || 0) + 1
+    })
+    return acc
+  },
+  {} as Record<string, number>
+)
+
+const sortedTags = Object.entries(tagCounts).sort(([tagA, countA], [tagB, countB]) => {
+  if (countB !== countA) return countB - countA
+  return tagA.localeCompare(tagB, 'zh-CN')
+})
+
+const meta = sectionMetadata('/product/tags') ?? {
+  title: '产品标签',
+  description: '按主题浏览产品思考，从标签进入产品拆解、需求分析与设计取舍。'
+}
+---
+
+<PageLayout {meta}>
+  <Button title='返回产品思考' href='/product' style='back' />
+
+  <main class='mt-6 lg:mt-10'>
+    <div id='content-header' class='animate'>
+      <h1 class='mb-2 flex items-center gap-2 text-3xl font-medium'>
+        <Icon name='tag-2' />
+        产品标签
+      </h1>
+      <p class='mb-6 text-muted-foreground'>
+        共 {sortedTags.length} 个标签，收录于 {allEntries.length} 篇产品思考
+      </p>
+    </div>
+
+    <section id='content' class='animate' aria-label='产品标签列表'>
+      <div class='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+        {
+          sortedTags.map(([tag, count]) => (
+            <a
+              href={`/product/tags/${tag}`}
+              class='group rounded-lg border border-border bg-card p-4 transition hover:border-foreground/20 hover:shadow-sm'
+              data-astro-prefetch
+            >
+              <div class='flex items-center justify-between'>
+                <span class='font-medium text-foreground transition-colors group-hover:text-primary'>
+                  {tag}
+                </span>
+                <span class='rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground'>
+                  {count}
+                </span>
+              </div>
+            </a>
+          ))
+        }
+      </div>
+
+      {sortedTags.length === 0 && <p class='text-muted-foreground'>暂无产品思考标签。</p>}
+    </section>
+  </main>
+</PageLayout>
