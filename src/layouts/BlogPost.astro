@@ -6,13 +6,12 @@ import { contentLastModified } from '@/lib/seo/lastmod'
 // Plugin styles
 import 'katex/dist/katex.min.css'
 
-import ArticleBottom from '@/components/pure/ArticleBottom.astro'
-import Hero from '@/components/pure/Hero.astro'
-import MediumZoom from '@/components/MediumZoom.astro'
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
 import TableOfContents from '@/components/navigation/TableOfContents.astro'
-import { integ } from '@/site-config'
+import { filterTocHeadings } from '@/components/navigation/toc'
+import ArticleBottom from '@/components/pure/ArticleBottom.astro'
+import Hero from '@/components/pure/Hero.astro'
 
 interface Props {
   post: CollectionEntry<'blog'>
@@ -39,7 +38,7 @@ const socialImage = coverSrc
 const articleDate = pubDate.toISOString()
 const articleModified = contentLastModified(Astro.props.post.filePath, pubDate, updatedDate)
 
-const tocHeadings = headings.filter(({ depth }) => depth <= 3)
+const tocHeadings = filterTocHeadings(headings)
 
 // Structured data：BlogPosting + 面包屑；author/publisher 引用 BaseHead 里全站输出的 Person
 const lang = 'zh-CN'
@@ -107,5 +106,3 @@ const breadcrumbLd = {
 
   <slot name='bottom-sidebar' slot='bottom-sidebar' />
 </PageLayout>
-
-{integ.mediumZoom.enable && <MediumZoom />}

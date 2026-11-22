@@ -3,6 +3,7 @@ import type { MarkdownHeading } from 'astro'
 
 import PageLayout from '@/layouts/ContentLayout.astro'
 import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import { filterTocHeadings } from '@/components/navigation/toc'
 
 interface Props {
   title: string
@@ -12,10 +13,11 @@ interface Props {
 
 const { title, description, headings, ...props } = Astro.props
 const meta = description ? { title, description } : { title }
+const tocHeadings = filterTocHeadings(headings)
 ---
 
 <PageLayout {meta} {...props}>
-  {headings?.length && <TableOfContents headings={headings} slot='sidebar' />}
+  {!!tocHeadings.length && <TableOfContents headings={tocHeadings} slot='sidebar' />}
 
   <Fragment slot='header'>
     <h1 class='text-2xl font-medium sm:mb-2 sm:text-3xl'>

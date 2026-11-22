@@ -7,6 +7,10 @@ export interface TocItem {
   subheadings: TocItem[]
 }
 
+export function filterTocHeadings(rawHeadings: readonly MarkdownHeading[] = []): MarkdownHeading[] {
+  return rawHeadings.filter(({ depth }) => depth >= 2 && depth <= 3)
+}
+
 function diveChildren(item: TocItem, depth: number): TocItem[] {
   if (depth === 1 || !item.subheadings.length) return item.subheadings
   return diveChildren(item.subheadings[item.subheadings.length - 1] as TocItem, depth - 1)
