@@ -7,10 +7,9 @@ import { contentLastModified } from '@/lib/seo/lastmod'
 
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
-import MediumZoom from '@/components/MediumZoom.astro'
 import ProjectNav from '@/components/navigation/ProjectNav.astro'
 import TableOfContents from '@/components/navigation/TableOfContents.astro'
-import { integ } from '@/site-config'
+import { filterTocHeadings } from '@/components/navigation/toc'
 
 /**
  * Project detail - /projects/<slug> and /projects/<slug>/<part>
@@ -40,7 +39,7 @@ type Props = {
 
 const { entry } = Astro.props
 const { Content, headings } = await render(entry)
-const tocHeadings = headings.filter(({ depth }) => depth <= 3)
+const tocHeadings = filterTocHeadings(headings)
 
 const all = (await getCollection('projects')).filter((item) => !item.data.draft)
 const isRoot = isProjectRoot(entry)
@@ -232,5 +231,3 @@ const siblings = isRoot
     }
   </div>
 </PageLayout>
-
-{integ.mediumZoom.enable && <MediumZoom />}

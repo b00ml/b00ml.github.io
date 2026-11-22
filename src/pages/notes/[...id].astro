@@ -7,6 +7,7 @@ import { Button, Icon } from 'astro-pure/user'
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
 import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import { filterTocHeadings } from '@/components/navigation/toc'
 
 export const prerender = true
 
@@ -28,7 +29,7 @@ type Props = {
 
 const { entry } = Astro.props
 const { Content, headings } = await render(entry)
-const tocHeadings = headings.filter(({ depth }) => depth <= 3)
+const tocHeadings = filterTocHeadings(headings)
 
 const { title, description, pubDate, updatedDate, tags } = entry.data
 
