@@ -1,18 +1,20 @@
 ---
 import type { MarkdownHeading } from 'astro'
 
-import TableOfContents from '@/components/navigation/TableOfContents.astro'
 import PageLayout from '@/layouts/ContentLayout.astro'
+import TableOfContents from '@/components/navigation/TableOfContents.astro'
 
 interface Props {
   title: string
+  description?: string
   headings?: MarkdownHeading[]
 }
 
-const { title, headings, ...props } = Astro.props
+const { title, description, headings, ...props } = Astro.props
+const meta = description ? { title, description } : { title }
 ---
 
-<PageLayout meta={{ title }} {...props}>
+<PageLayout {meta} {...props}>
   {headings?.length && <TableOfContents headings={headings} slot='sidebar' />}
 
   <Fragment slot='header'>
