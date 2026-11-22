@@ -80,7 +80,7 @@ const breadcrumbLd = {
         <div class='mb-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
           {tags.map((tag) => (
             <a
-              href={`/notes/tags/${tag}`}
+              href={`/notes/tags/${encodeURIComponent(tag)}`}
               class='rounded-md border border-border px-2 py-1 transition hover:border-foreground/20'
             >
               {tag}

@@ -16,7 +16,9 @@ import ProjectCard from '@/components/projects/ProjectCard.astro'
  */
 export const prerender = true
 
-const cards = buildProjectCards(await getCollection('projects'))
+const cards = buildProjectCards(await getCollection('projects'), {
+  isProd: import.meta.env.PROD
+})
 
 const groups = STATUS_ORDER.map((status) => ({
   status,

@@ -23,6 +23,7 @@ const entrySchema = ({ image }: SchemaContext) =>
     draft: z.boolean().default(false),
     featured: z.boolean().default(false),
     featuredOrder: z.number().int().positive().optional(),
+    hideFromHome: z.boolean().default(false),
     cover: z
       .object({
         src: image(),

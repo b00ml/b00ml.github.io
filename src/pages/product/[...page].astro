@@ -7,6 +7,7 @@
 import type { GetStaticPaths, Page } from 'astro'
 import type { CollectionEntry } from 'astro:content'
 import { getCollection } from 'astro:content'
+import { countAndSortTags } from '@/lib/content/tags'
 import { listingMetadata } from '@/lib/seo/metadata'
 
 import { Button, Icon } from 'astro-pure/user'
@@ -33,20 +34,7 @@ interface Props {
 const { page } = Astro.props as unknown as Props
 
 const allEntries = (await getCollection('product')).filter((entry) => !entry.data.draft)
-const tagCounts = allEntries.reduce(
-  (acc, entry) => {
-    entry.data.tags.forEach((tag) => {
-      acc[tag] = (acc[tag] || 0) + 1
-    })
-    return acc
-  },
-  {} as Record<string, number>
-)
-const uniqueTags = Object.entries(tagCounts)
-  .sort(([tagA, countA], [tagB, countB]) =>
-    countB !== countA ? countB - countA : tagA.localeCompare(tagB, 'zh-CN')
-  )
-  .map(([tag]) => tag)
+const uniqueTags = countAndSortTags(allEntries).map(([tag]) => tag)
 
 const meta = listingMetadata(
   'product',
@@ -112,7 +100,7 @@ const paginationProps = {
                 <li class='rounded-xl border border-border bg-card px-5 py-5 transition hover:border-foreground/20 hover:shadow-sm'>
                   <a
                     href={`/product/${entry.id}`}
-                    class='group/link block space-y-2'
+                    class='group/link flex flex-col gap-2'
                     data-astro-prefetch
                   >
                     <h3 class='text-lg font-medium leading-tight text-foreground transition-colors group-hover/link:text-primary'>

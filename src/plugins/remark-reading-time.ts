@@ -42,16 +42,22 @@ export function calculateReadingTime(
   }
 }
 
+export function formatReadingTime(text: string, options?: ReadingTimeOptions): string {
+  const { displayedMinutes } = calculateReadingTime(text, options)
+  return `${Math.max(1, displayedMinutes)} 分钟阅读`
+}
+
 /**
  * Override astro-pure's English-centric reading time with a bilingual estimate.
  * Chinese characters and non-CJK words use separate reading speeds.
  */
 export const remarkReadingTime: Plugin<[], Root> = function () {
   return function (tree, { data }) {
-    const readingTime = calculateReadingTime(extractText(tree))
+    const rawText = extractText(tree)
+    const readingTime = calculateReadingTime(rawText)
 
     if (data.astro?.frontmatter) {
-      data.astro.frontmatter.minutesRead = `${readingTime.displayedMinutes} 分钟阅读`
+      data.astro.frontmatter.minutesRead = formatReadingTime(rawText)
       data.astro.frontmatter.words = readingTime.cjkCharacters + readingTime.words
     }
   }

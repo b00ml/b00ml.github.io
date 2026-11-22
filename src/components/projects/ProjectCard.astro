@@ -61,30 +61,24 @@ const metaLine = [project.period, project.role].filter(Boolean).join(' · ')
     }
   </a>
 
-  <div class='flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs'>
-    <a
-      href={project.href}
-      data-astro-prefetch
-      class='inline-flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 font-medium text-primary transition hover:bg-primary/15'
-    >
-      <span>项目深读</span>
-      <span aria-hidden='true'>→</span>
-    </a>
-    {
-      project.links.map((link) => {
-        const external = isExternalProjectLink(link.href)
-        return (
-          <a
-            href={link.href}
-            target={external ? '_blank' : undefined}
-            rel={external ? 'noopener noreferrer' : undefined}
-            class='inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-muted hover:text-foreground'
-          >
-            <span>{link.label}</span>
-            <span aria-hidden='true'>{external ? '↗' : '→'}</span>
-          </a>
-        )
-      })
-    }
-  </div>
+  {
+    project.links.length > 0 && (
+      <div class='flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs'>
+        {project.links.map((link) => {
+          const external = isExternalProjectLink(link.href)
+          return (
+            <a
+              href={link.href}
+              target={external ? '_blank' : undefined}
+              rel={external ? 'noopener noreferrer' : undefined}
+              class='inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-muted hover:text-foreground'
+            >
+              <span>{link.label}</span>
+              <span aria-hidden='true'>{external ? '↗' : '→'}</span>
+            </a>
+          )
+        })}
+      </div>
+    )
+  }
 </article>

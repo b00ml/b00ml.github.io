@@ -107,14 +107,20 @@ describe('layout stress-test sample post', () => {
 
 describe('Chinese UI chrome and semantic tokens', () => {
   test('uses semantic tokens instead of missing presetWind3 or astro-pure classes', () => {
-    const brokenClasses = ['text-red-500', 'text-bgColor']
-    const files = nonTestSourceFiles(join(ROOT, 'src'))
+    const brokenClassPatterns = [
+      /\btext-red-500\b/,
+      /\btext-bgColor\b/,
+      /\bspace-[xy]-\d+\b/,
+      /\btabular-nums\b/,
+      /\bline-clamp-\d+\b/
+    ]
+    const files = nonTestSourceFiles(join(ROOT, 'src')).filter((path) => !path.endsWith('.css'))
 
     const violations = files.flatMap((file) => {
-      const content = readFileSync(file, 'utf8')
-      return brokenClasses
-        .filter((token) => content.includes(token))
-        .map((token) => `${file}: ${token}`)
+      const content = readFileSync(file, 'utf8').replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, '')
+      return brokenClassPatterns
+        .filter((pattern) => pattern.test(content))
+        .map((pattern) => `${file}: ${pattern}`)
     })
 
     expect(violations).toEqual([])

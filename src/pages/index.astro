@@ -16,7 +16,13 @@ const [projects, blog, product, notes] = await Promise.all([
   getCollection('notes')
 ])
 
-const viewModel = buildHomeViewModel({ projects, blog, product, notes })
+const viewModel = buildHomeViewModel({
+  projects,
+  blog,
+  product,
+  notes,
+  isProd: import.meta.env.PROD
+})
 
 const meta = sectionMetadata('/') ?? {
   title: '首页',
