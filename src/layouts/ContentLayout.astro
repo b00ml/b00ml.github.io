@@ -22,7 +22,7 @@ const hasBottomSidebar = bottomSidebarHtml.length > 0
 ---
 
 <PageLayout {meta} {highlightColor} {...props}>
-  <Button title='Back' href={back} style='back' />
+  <Button title='返回' href={back} style='back' />
   <main class='mt-6 items-start gap-x-10 md:flex'>
     {/* Sidebar */}
     {
@@ -83,7 +83,7 @@ const hasBottomSidebar = bottomSidebarHtml.length > 0
       hasSidebar && (
         <button
           slot='other-icons'
-          aria-label='Toggle sidebar'
+          aria-label='切换目录'
           aria-controls='sidebar'
           class='size-10 flex items-center justify-center rounded-full border-2 border-transparent bg-muted text-muted-foreground duration-300 hover:border-border/75 md:hidden sm:size-12'
           id='sidebar-btn'

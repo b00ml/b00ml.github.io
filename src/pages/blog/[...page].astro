@@ -39,13 +39,13 @@ const meta = listingMetadata(
 const paginationProps = {
   ...(page.url.prev && {
     prevUrl: {
-      text: `← Previous Posts`,
+      text: '← 上一页',
       url: page.url.prev
     }
   }),
   ...(page.url.next && {
     nextUrl: {
-      text: `Next Posts →`,
+      text: '下一页 →',
       url: page.url.next
     }
   })
@@ -53,24 +53,24 @@ const paginationProps = {
 ---
 
 <PageLayout {meta}>
-  <Button title='Back' href='/' style='back' />
+  <Button title='返回' href='/' style='back' />
   <main class='mt-6 lg:mt-10'>
     <div id='content-header' class='animate'>
-      <h1 class='mb-6 mt-6 text-3xl font-medium sm:mt-10'>Blog</h1>
+      <h1 class='mb-6 mt-6 text-3xl font-medium sm:mt-10'>技术</h1>
     </div>
     {
       page.data.length === 0 ? (
-        <p>No posts yet.</p>
+        <p class='text-muted-foreground'>还没有文章。</p>
       ) : (
         <div class='grid gap-y-16 sm:grid-cols-[3fr_1fr] sm:gap-x-8'>
-          <section aria-label='Blog posts list' class='animate' id='content'>
+          <section aria-label='文章列表' class='animate' id='content'>
             {/* header */}
             <div class='mb-3 flex flex-col justify-between text-sm sm:mb-5 sm:flex-row'>
               <span class='text-muted-foreground'>
-                Page {page.currentPage} - Showing {page.data.length} of {collectionsCount} posts
+                显示第 {page.start + 1}-{page.end + 1} 篇，共 {collectionsCount} 篇
               </span>
-              <a aria-label='View all tags' href='/tags' data-astro-prefetch>
-                View all tags →
+              <a aria-label='查看全部标签' href='/tags' data-astro-prefetch>
+                查看全部标签 →
               </a>
             </div>
             {/* posts */}

@@ -40,11 +40,11 @@ export const theme: ThemeUserConfig = {
   /** Configure the header of your site. */
   header: {
     menu: [
-      { title: 'Blog', link: '/blog' },
-      { title: 'Notes', link: '/notes' },
-      { title: 'Product', link: '/product' },
-      { title: 'Projects', link: '/projects' },
-      { title: 'About', link: '/about' }
+      { title: '项目', link: '/projects' },
+      { title: '技术', link: '/blog' },
+      { title: '产品', link: '/product' },
+      { title: '笔记', link: '/notes' },
+      { title: '关于', link: '/about' }
     ]
   },
 
@@ -52,7 +52,7 @@ export const theme: ThemeUserConfig = {
   footer: {
     links: [],
     /** Enable displaying a “Astro & Pure theme powered” link in your site’s footer. */
-    credits: true,
+    credits: false,
     /** Optional details about the social media accounts for this site. */
     social: {
       github: 'https://github.com/b00ml'

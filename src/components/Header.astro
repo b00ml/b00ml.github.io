@@ -16,7 +16,7 @@ const menu = config.header?.menu ?? []
     class='z-30 shrink-0 whitespace-nowrap text-xl font-semibold group-[.not-top]:ms-2 sm:group-[.not-top]:ms-3'
     style='transition:margin-inline 0.3s'
     href='/'
-    aria-label='Brand'>{config.title}</a
+    aria-label='返回首页'>{config.title}</a
   >
 
   <div class='flex items-center gap-x-2'>
@@ -31,7 +31,7 @@ const menu = config.header?.menu ?? []
             <a
               href={item.link}
               class='w-full flex-none grow py-2 text-right font-medium transition-none hover:text-primary sm:w-fit sm:px-3'
-              aria-label='Nav menu item'
+              aria-label={item.title}
             >
               {item.title}
             </a>
@@ -52,7 +52,7 @@ const menu = config.header?.menu ?? []
         id='toggleDarkMode'
         class='group/dark relative box-content size-5 rounded-md border p-1.5 transition-colors hover:bg-border sm:group-[.not-top]:rounded-xl'
       >
-        <span class='sr-only'>Toggle dark mode</span>
+        <span class='sr-only'>切换深浅色主题</span>
         <Icon class='theme-icon system size-5 group-hover/dark:text-primary' name='computer' />
         <Icon class='theme-icon light size-5 group-hover/dark:text-primary' name='sun' />
         <Icon class='theme-icon dark size-5 group-hover/dark:text-primary' name='moon' />
@@ -63,7 +63,7 @@ const menu = config.header?.menu ?? []
         aria-controls='headerExpandContent'
         aria-expanded='false'
       >
-        <span class='sr-only'>Toggle menu</span>
+        <span class='sr-only'>切换导航菜单</span>
         <Icon class='size-5' name='menu' />
       </button>
     </div>
@@ -79,6 +79,12 @@ const menu = config.header?.menu ?? []
 </script>
 <script>
   import { setTheme, showToast } from 'astro-pure/utils'
+
+  const THEME_LABELS: Record<string, string> = {
+    system: '跟随系统',
+    light: '浅色',
+    dark: '深色'
+  }
 
   class Header extends HTMLElement {
     private toggleMenuBtn: HTMLElement | null = null
@@ -121,7 +127,8 @@ const menu = config.header?.menu ?? []
       darkModeBtn.addEventListener('click', () => {
         const newTheme = setTheme(undefined, true)
         darkModeBtn.dataset.theme = newTheme
-        showToast({ message: `Set theme to ${newTheme}` })
+        const label = (newTheme && THEME_LABELS[newTheme]) || '默认'
+        showToast({ message: `已切换为${label}模式` })
       })
 
       this.toggleMenuBtn = this.querySelector('#toggleMenu')

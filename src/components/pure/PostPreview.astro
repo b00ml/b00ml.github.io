@@ -11,8 +11,9 @@
 import { Image } from 'astro:assets'
 import { render, type CollectionEntry, type CollectionKey } from 'astro:content'
 import type { HTMLTag, Polymorphic } from 'astro/types'
-import { cn } from 'astro-pure/utils'
+
 import { Button, FormattedDate, Icon } from 'astro-pure/user'
+import { cn } from 'astro-pure/utils'
 
 type Props<Tag extends HTMLTag> = Polymorphic<{ as: Tag }> & {
   post: CollectionEntry<CollectionKey>
@@ -61,7 +62,7 @@ const postDate = data.updatedDate ?? data.pubDate
       {/* title */}
       <div class='flex justify-between'>
         <div class={detailed && 'font-medium'}>
-          {data.draft && <span class='text-red-500'>(Draft) </span>}
+          {data.draft && <span class='text-destructive'>（草稿）</span>}
           {data.title}
         </div>
         <svg

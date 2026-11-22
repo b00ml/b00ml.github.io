@@ -9,6 +9,7 @@
 // `astro-pure/components/pages` barrel.
 import { Image } from 'astro:assets'
 import type { InferEntrySchema } from 'astro:content'
+
 import { FormattedDate, Icon } from 'astro-pure/user'
 
 interface Props {
@@ -37,7 +38,8 @@ const dateTimeOptions: Intl.DateTimeFormatOptions = {
         {...cover}
       />
       <Image
-        alt='Blur image'
+        alt=''
+        aria-hidden='true'
         fetchpriority='high'
         loading='eager'
         id='blurImage'
@@ -48,7 +50,7 @@ const dateTimeOptions: Intl.DateTimeFormatOptions = {
   )
 }
 
-{draft ? <span class='text-red-500'>(Draft)</span> : null}
+{draft ? <span class='text-destructive'>（草稿）</span> : null}
 
 <div class='article-info max-lg:mx-auto'>
   <div class='flex flex-wrap gap-x-4 gap-y-2 text-xs leading-6 text-muted-foreground'>
@@ -61,7 +63,7 @@ const dateTimeOptions: Intl.DateTimeFormatOptions = {
           <div class='flex items-center gap-1'>
             <span> / </span>
             <span>
-              Update
+              更新于{' '}
               <FormattedDate
                 class='font-sans'
                 date={updatedDate}
@@ -85,7 +87,7 @@ const dateTimeOptions: Intl.DateTimeFormatOptions = {
           {tags.map((tag: string, i: number) => (
             <div>
               <a
-                aria-label={`View more blogs with the tag ${tag}`}
+                aria-label={`查看标签为 ${tag} 的文章`}
                 class='hover:underline hover:underline-offset-4'
                 data-pagefind-filter='tag'
                 href={`/tags/${tag}`}

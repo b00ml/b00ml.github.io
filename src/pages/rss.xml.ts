@@ -55,17 +55,14 @@ function mdxJsxToHast(state: any, node: MdastJsxNode) {
     }
   }
   return {
-    type: 'element',
+    type: 'element' as const,
     tagName: node.name || 'div',
     properties,
     children: state.all(node)
   }
 }
 
-const renderContent = async (
-  post: { id: string; body?: string; filePath?: string },
-  site: URL
-) => {
+const renderContent = async (post: { id: string; body?: string; filePath?: string }, site: URL) => {
   // Replace image links with the correct path
   function remarkReplaceImageLink() {
     /**

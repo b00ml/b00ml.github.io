@@ -232,7 +232,7 @@ span.katex-display {
     user-select: none;
 
     & .success::before {
-      content: 'Copied!';
+      content: '已复制';
       position: absolute;
       right: 100%;
       top: 0;

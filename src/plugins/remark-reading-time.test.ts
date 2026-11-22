@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import type { Root } from 'mdast'
 
-import { calculateReadingTime } from './remark-reading-time'
+import { calculateReadingTime, remarkReadingTime } from './remark-reading-time'
 
 describe('calculateReadingTime', () => {
   test('uses 350 characters per minute for Chinese text', () => {
@@ -24,5 +25,22 @@ describe('calculateReadingTime', () => {
 
     expect(result.minutes).toBe(2)
     expect(result.displayedMinutes).toBe(2)
+  })
+
+  test('writes Chinese minutesRead onto Astro frontmatter', () => {
+    const tree: Root = {
+      type: 'root',
+      children: [{ type: 'paragraph', children: [{ type: 'text', value: '中'.repeat(700) }] }]
+    }
+    const frontmatter: Record<string, unknown> = {}
+    const transform = remarkReadingTime.call({} as never) as (
+      tree: Root,
+      file: { data: { astro: { frontmatter: Record<string, unknown> } } }
+    ) => void
+
+    transform(tree, { data: { astro: { frontmatter } } })
+
+    expect(frontmatter.minutesRead).toBe('2 分钟阅读')
+    expect(frontmatter.words).toBe(700)
   })
 })

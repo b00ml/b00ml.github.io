@@ -65,7 +65,7 @@ const breadcrumbLd = {
   '@type': 'BreadcrumbList',
   itemListElement: [
     { '@type': 'ListItem', position: 1, name: '首页', item: `${origin}/` },
-    { '@type': 'ListItem', position: 2, name: 'Notes', item: `${origin}/notes` },
+    { '@type': 'ListItem', position: 2, name: '笔记', item: `${origin}/notes` },
     { '@type': 'ListItem', position: 3, name: title }
   ]
 }
@@ -112,7 +112,7 @@ const breadcrumbLd = {
           <div class='flex items-center gap-2'>
             <Icon name='calendar' />
             <span>
-              Updated{' '}
+              更新于{' '}
               {updatedDate.toLocaleDateString('zh-CN', {
                 year: 'numeric',
                 month: 'long',
@@ -132,7 +132,7 @@ const breadcrumbLd = {
   <div slot='bottom' class='animate mt-8 border-t border-border pt-6'>
     <div class='flex items-start justify-between gap-4'>
       <p class='text-xs text-muted-foreground'>内容可能还没写完，会持续补充。</p>
-      <Button title='Back' href='/notes' style='back' />
+      <Button title='返回' href='/notes' style='back' />
     </div>
   </div>
 </PageLayout>
