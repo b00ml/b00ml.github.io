@@ -5,10 +5,16 @@ import { listingMetadata, sectionMetadata } from './metadata'
 
 describe('section metadata', () => {
   test('section copy and meaningful pagination', () => {
-    expect(sectionMetadata('/about')?.title).toBe('关于我')
+    const about = sectionMetadata('/about')
+    expect(about?.title).toBe('关于我')
+    expect(about?.description).toContain('产品工程师')
+    expect(about?.description).toContain('能力')
+    expect(about?.description).toContain('项目')
     expect(sectionMetadata('/product')?.title).toBe('产品')
     expect(sectionMetadata('/blog/existing/post')).toBeUndefined()
-    expect(listingMetadata('notes', 2, ['实际笔记标题'], 'ai').title).toBe('笔记 · ai 标签 · 第 2 页')
+    expect(listingMetadata('notes', 2, ['实际笔记标题'], 'ai').title).toBe(
+      '笔记 · ai 标签 · 第 2 页'
+    )
     expect(listingMetadata('blog', 1, ['Real article']).description).toContain('Real article')
   })
 

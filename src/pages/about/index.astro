@@ -1,42 +1,197 @@
 ---
+import { sectionMetadata } from '@/lib/seo/metadata'
+
 import { Button } from 'astro-pure/user'
 import PageLayout from '@/layouts/CommonPage.astro'
 
+const meta = sectionMetadata('/about') ?? {
+  title: '关于我',
+  description:
+    '了解 peik1：产品工程师（产品设计 × AI 应用工程落地），能力栈与独立交付边界、代表项目及求职联系通道。'
+}
+
 const headings = [
-  { depth: 2, slug: 'about', text: '关于' },
-  { depth: 2, slug: 'doing', text: '在做什么' },
-  { depth: 2, slug: 'done', text: '做过什么' },
-  { depth: 2, slug: 'blog', text: '这个站' },
-  { depth: 2, slug: 'contact', text: '联系' }
+  { depth: 2, slug: 'positioning', text: '定位与工程主张' },
+  { depth: 2, slug: 'capabilities', text: '能力栈与独立交付边界' },
+  { depth: 2, slug: 'projects', text: '代表项目与经历脉络' },
+  { depth: 2, slug: 'contact', text: '求职意向与联系通道' }
 ]
 ---
 
-<PageLayout title='About' {headings}>
-  <h2 id='about'>关于</h2>
-  <p>我是 <strong>peik1</strong>，产品工程师，做产品设计 × AI 应用落地。</p>
-  <p>反复回答的只有一个问题：「AI 能不能帮我干这个」。不追通用的答案，把一个个具体流程真的做到能跑、能测、出错能兜——跑到哪，算哪。</p>
+<PageLayout title={meta.title} description={meta.description} {headings}>
+  <h2 id='positioning'>定位与工程主张</h2>
+  <p>
+    我是 <strong>peik1</strong>，<strong>产品工程师</strong>（产品设计 × AI 应用工程落地）。
+  </p>
+  <p>
+    日常聚焦回答一个具体问题：「AI
+    能不能帮业务把这个活干成」。不做泛化的万能聊天框，而是把具体业务流程拆成可执行的输入输出、确定性规则前置、模型辅助判断与人工兜底边界，把整条链路做到<strong
+      >能跑、能测、出错能兜</strong
+    >。
+  </p>
+  <p>
+    衡量系统设计厚度的标准很简单：换一个更强的底层模型进来，应用层要改多少行代码。改得越少，越说明状态账本、写入门禁、来源回溯与评测闭环沉淀成了真正的工程资产，而不是附着在单次调用上的临时补丁。
+  </p>
 
-  <h2 id='doing'>在做什么</h2>
-  <p>目前主要在做一件：</p>
-  <p><a href='/projects/ark-workbench'><strong>Ark 知识工作台</strong></a>，一个 Obsidian 插件加 Agent 的桌面工作台。素材（视频、文章、开发记录）收进来之后，经过结构化加工和检索回读，再产出新的东西，目标是让个人的判断和 AI 的产出都沉淀成带来源、能更新的知识资产。站里不少想法，最早都长在它的笔记里。</p>
+  <h2 id='capabilities'>能力栈与独立交付边界</h2>
+  <p>
+    从需求拆解、交互原型、评测基准到前后端工程落地，能够在单人闭环下独立推进以下三层交付，并清楚界定机器自动化与人工决策的衔接点：
+  </p>
 
-  <h2 id='done'>做过什么</h2>
+  <div class='not-prose my-5 grid gap-3'>
+    <div class='rounded-xl border border-border bg-card p-4 sm:p-5'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1'>
+        <p class='text-base font-medium text-card-foreground'>产品定义与流程拆解</p>
+        <span class='rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground'>
+          模糊业务诉求 → 状态机与人机边界定义
+        </span>
+      </div>
+      <p class='mt-2 text-sm leading-relaxed text-muted-foreground'>
+        独立完成复杂业务链路切分（如报销审核 / 发票稽核 /
+        银行对账，或资料接入到人工终审七段出题流水线）；明确「确定性规则直判 → 模型提供第二意见 →
+        分歧与存疑转人工复核
+        Gate」的权责边界；将任务执行、人工复核与外部系统副作用拆成独立状态账本，避免单一完成态掩盖局部异常。
+      </p>
+    </div>
+
+    <div class='rounded-xl border border-border bg-card p-4 sm:p-5'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1'>
+        <p class='text-base font-medium text-card-foreground'>Agent 评测与原型验证</p>
+        <span class='rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground'>
+          离线回归门禁 · 检索基准 · 可交互工作台原型
+        </span>
+      </div>
+      <p class='mt-2 text-sm leading-relaxed text-muted-foreground'>
+        独立搭建离线回归集与合成边界困难集，按构建身份绑定评测读数，严格区分工程契约验证与人工业务校准；落地向量
+        + 关键词两路召回与 RRF 融合评测，对工具调用与检索片段做字段路径 /
+        原文页码回溯（Grounding）校验；快速交付可直接上手操作的 Web 审核工作台原型验证协作动线。
+      </p>
+    </div>
+
+    <div class='rounded-xl border border-border bg-card p-4 sm:p-5'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1'>
+        <p class='text-base font-medium text-card-foreground'>全栈工程化落地</p>
+        <span class='rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground'>
+          前后端实现 · 受控工作流 · 千级测试门禁
+        </span>
+      </div>
+      <p class='mt-2 text-sm leading-relaxed text-muted-foreground'>
+        技术栈覆盖 TypeScript / Python、Vue 3 / Astro / Obsidian 插件与 FastAPI，数据与异步层使用
+        PostgreSQL / SQLite / Redis / Celery；围绕 LangGraph 受控工作流落地检查点恢复、事务 Outbox
+        投递、三层幂等键与 CAS 原子写入守卫，并以千级自动化测试与覆盖率硬门槛保障持续迭代。
+      </p>
+    </div>
+  </div>
+
+  <h2 id='projects'>代表项目与经历脉络</h2>
+  <p>
+    近期的工程与产品实践围绕同一条主线递进：<strong
+      >如何把带不确定性的大模型放进要求可追溯、可恢复的真实流程</strong
+    >——从制造企业财务审核 POC、高一致性教研内容生产流水线，演进到持续自用的个人上下文与 Agent
+    运行时底座：
+  </p>
+
   <ul>
-    <li><a href='/projects/english-content-workbench'><strong>英语内容生产工作台</strong></a>：面向英语习题生产，把生成、自动质检、人工审核、发布拆成四个阶段。要回答的不是「能不能生成」，而是「人什么时候必须介入」。</li>
-    <li><a href='/projects/finance-review-agent'><strong>企业财务审核 Agent</strong></a>：差旅、发票、对账三类场景，规则初审、OCR 取证、模型复核，规则与模型分歧的地方标出来交人拍板。</li>
+    <li>
+      <a href='/projects/ark-workbench'><strong>Ark 知识工作台</strong></a>（2026 至今 · 独立开发 ·
+      在做）：Obsidian 插件 + Agent
+      运行时底座，专注个人长期上下文资产沉淀。拆分会话、任务、外部副作用、记忆生命周期与索引版本五套独立账本，实现
+      CAS 原子写入守卫、人审激活记忆门禁与 155 文件 / 563 条记录无损迁移，建立七层证据体系并通过 <strong
+        >3,778</strong
+      > 项统一回归测试（附<a
+        href='/diagrams/ark-architecture.html'
+        target='_blank'
+        rel='noopener noreferrer'>可交互系统架构图</a
+      >）。
+    </li>
+    <li>
+      <a href='/projects/finance-review-agent'><strong>企业财务审核 Agent</strong></a>（2026 ·
+      产品设计 · 已交付）：面向制造企业报销审核（M2）、发票稽核（M3）、银行对账（M4）三条链路，串联
+      11 类规则初审、本地 OCR 取证与受控调查，将任务执行、人工复核 Gate 与 ERP 审批三态分离；32
+      条合成困难集结论准确率与违规一致率达 1.0000，50 条制度标注集混合检索 <strong>Recall@8</strong>
+      达 1.00。配套提供无需登录的<a href='/projects/finance-review-agent/demo/'>在线交互 Demo</a
+      >、<a href='/diagrams/qiheng-architecture.html' target='_blank' rel='noopener noreferrer'
+        >可交互系统架构图</a
+      >与<a
+        href='https://github.com/b00ml/AI-financialAgent-POC'
+        target='_blank'
+        rel='noopener noreferrer'>开源仓库</a
+      >。
+    </li>
+    <li>
+      <a href='/projects/english-content-workbench'><strong>英语内容生产工作台</strong></a>（2026 ·
+      产品与实现 · 已交付）：面向教研批量出题的七段式生成与质检流水线，落地「规则前置拦截 → 双轮
+      Judge 复核 → 人工终审」三层判定，跨数据库、队列、检查点与文件卷实现 Outbox
+      投递与三层幂等；通过 <strong>1,154</strong> 项自动化测试（含 63 项真实 PostgreSQL 迁移集成，应用层覆盖率
+      <strong>84.05%</strong>）与 44/44 原文页码回溯回归。
+    </li>
   </ul>
-  <p>两件都各跑通过一版，现在不常动。共同点同样是：把一个流程从头跑到尾，而不是做个更聪明的聊天框。</p>
 
-  <h2 id='blog'>这个站</h2>
-  <p>这里挂着四个抽屉：<a href='/blog'>Blog</a> 是想清楚的事，一篇一个论点；<a href='/notes'>Notes</a> 是随手记的东西，还没成篇的都塞在这儿；<a href='/product'>Product</a> 是拆过的产品，看它做了什么取舍、代价是什么；<a href='/projects'>项目</a> 是自己做出来的东西，附证据和卡点。</p>
-  <p>写下来主要是为了逼自己把话说完整——一件事能写成文章，才算真的想明白。</p>
+  <p>
+    除<a href='/projects'>全部项目总览</a
+    >外，项目推进过程中的方法复盘与行业拆解按主题归档在站内三个栏目：<a href='/blog'>技术文章</a
+    >沉淀可复用的 Agent 工程与系统设计长文，<a href='/product'>产品思考</a
+    >记录垂类场景边界与产品取舍拆解，<a href='/notes'>日常笔记</a>保留高频输入与阶段性思考记录。
+  </p>
 
-  <h2 id='contact'>联系</h2>
-  <p>邮件最靠谱：<a href='mailto:peik10421@163.com'>peik10421@163.com</a>。代码大多在 GitHub <a href='https://github.com/b00ml' target='_blank'>@b00ml</a>。如果某篇文章正好踩中你在做的事，欢迎直接找我。</p>
-  <Button
-    title='GitHub'
-    class='w-fit'
-    href='https://github.com/b00ml'
-    style='ahead'
-  />
+  <h2 id='contact'>求职意向与联系通道</h2>
+  <div class='not-prose my-5 rounded-xl border border-border bg-card p-4 sm:p-5'>
+    <dl class='grid gap-3 text-sm sm:grid-cols-[7rem_1fr] sm:gap-y-2.5'>
+      <dt class='font-medium text-card-foreground'>目标岗位方向</dt>
+      <dd class='text-muted-foreground'>
+        产品工程师 / AI 应用产品经理（偏工程落地）/ AI Agent 全栈应用开发
+      </dd>
+
+      <dt class='font-medium text-card-foreground'>意向城市</dt>
+      <dd class='text-muted-foreground'>开放沟通（国内一线及新一线城市技术与产品团队均可）</dd>
+
+      <dt class='font-medium text-card-foreground'>联系邮箱</dt>
+      <dd class='text-muted-foreground'>
+        <a
+          href='mailto:peik10421@163.com'
+          class='font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary'
+        >
+          peik10421@163.com
+        </a>
+      </dd>
+
+      <dt class='font-medium text-card-foreground'>代码与开源</dt>
+      <dd class='text-muted-foreground'>
+        GitHub
+        <a
+          href='https://github.com/b00ml'
+          target='_blank'
+          rel='noopener noreferrer'
+          class='font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary'
+        >
+          @b00ml
+        </a>
+      </dd>
+
+      <dt class='font-medium text-card-foreground'>完整简历</dt>
+      <dd class='text-muted-foreground'>
+        如需 PDF 版完整简历或进一步核对项目细节，欢迎发邮件至
+        <a
+          href='mailto:peik10421@163.com'
+          class='font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary'
+        >
+          peik10421@163.com
+        </a>
+        索取（来信烦请注明团队与岗位方向，通常当日回复）。
+      </dd>
+    </dl>
+
+    <div class='mt-4 flex flex-wrap gap-x-2.5 gap-y-2 border-t border-border pt-4'>
+      <Button title='发送邮件' class='w-fit' href='mailto:peik10421@163.com' style='ahead' />
+      <Button
+        title='GitHub @b00ml'
+        class='w-fit'
+        href='https://github.com/b00ml'
+        target='_blank'
+        rel='noopener noreferrer'
+        style='ahead'
+      />
+      <Button title='查看代表项目' class='w-fit' href='/projects' style='ahead' />
+    </div>
+  </div>
 </PageLayout>
