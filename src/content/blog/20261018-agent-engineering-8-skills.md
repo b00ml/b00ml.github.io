@@ -3,6 +3,8 @@ title: 'Agent 工程八大核心内功：会写 Prompt 只是入场券'
 description: '从「演示能跑」到「线上敢用」隔着的八件工程硬功夫：上下文、记忆、工具、可靠性、安全、成本、观测、评估，以及为什么第一个项目不该拆多 Agent。'
 pubDate: 2026-10-18
 tags: ['agent', 'ai-engineering', 'system-design']
+featured: true
+featuredOrder: 1
 ---
 
 > 今天，任何一个人都能在五分钟里写一个「能跑」的 Agent：调 API、给工具、加个循环。但从「演示能跑」到「线上敢用」，中间隔着的不是更炫的 Prompt，而是八件工程上的硬功夫。

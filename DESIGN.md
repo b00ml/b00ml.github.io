@@ -265,6 +265,28 @@ copying the class combo rather than a shared component prop API:
   [Blurred Icon Transition](#blurred-icon-transition) — a motion pattern, not a
   static style.
 
+### Homepage Three-Tier Hierarchy
+
+[`HomeLanding.astro`](src/components/home/HomeLanding.astro) steps visual weight
+down across three content tiers below `#content-header`:
+
+- **Tier 1 — Featured Projects** ([`ProjectCard.astro`](src/components/projects/ProjectCard.astro)):
+  `rounded-xl border border-border bg-card p-5`, `text-lg font-semibold` title,
+  summary, `border-l-2 border-primary/25` quantitative highlights, stack chips,
+  and bottom action links. Arranged in an equal-width two-column grid
+  (`grid gap-4 sm:grid-cols-2`, matching `/projects`) rather than a single-column
+  stack or `1 + 2` lead-grid: compact vertical density lets a reader scan all
+  flagship projects and reach Featured Writing within half a scroll.
+- **Tier 2 — Featured Writing**: `rounded-xl border border-border/80 bg-muted/30 p-4`
+  lifting to `hover:bg-card`, `text-base font-medium` title, collection badge
+  (`bg-primary/10 text-primary` for engineering, `border-border bg-background`
+  for product), `font-mono tabular-nums` `YYYY-MM-DD` date, core argument
+  `description`, and tag chips in `grid gap-3.5 sm:grid-cols-2`.
+- **Tier 3 — Recent Notes**: borderless single-line rows (`hover:bg-muted/60`)
+  pairing `font-mono text-xs tabular-nums` `YYYY-MM-DD` dates with truncated
+  `text-sm` titles — decoupled from Featured Writing so frequent short notes
+  never displace curated essays or projects.
+
 ## Do's and Don'ts
 
 - Do use the semantic token classes (`bg-muted`, `text-primary`, …), never a

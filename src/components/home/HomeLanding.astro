@@ -1,0 +1,256 @@
+---
+import { formatDateYmd, type HomeViewModel } from '@/lib/curation/home'
+
+import ProjectCard from '@/components/projects/ProjectCard.astro'
+
+interface Props {
+  viewModel: HomeViewModel
+}
+
+const { viewModel } = Astro.props
+const { featuredProjects, featuredWriting, recentNotes } = viewModel
+---
+
+<main class='mx-auto flex w-full max-w-4xl flex-col gap-y-12 py-6 sm:gap-y-14 sm:py-10'>
+  <section
+    id='content-header'
+    class='animate flex flex-col gap-y-5 border-b border-border pb-8 sm:pb-10'
+    aria-labelledby='home-hero-title'
+  >
+    <div class='flex flex-col gap-y-3'>
+      <p
+        class='inline-flex w-fit items-center gap-x-2 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground'
+      >
+        <span class='size-1.5 rounded-full bg-primary' aria-hidden='true'></span>
+        <span>产品工程师 · 产品设计 × AI 应用工程落地</span>
+      </p>
+
+      <h1
+        id='home-hero-title'
+        class='text-3xl font-semibold tracking-tight text-foreground sm:text-4xl'
+      >
+        peik1
+      </h1>
+
+      <p class='max-w-3xl text-base leading-relaxed text-foreground/90 sm:text-lg'>
+        把具体业务流程做到能跑、能测、出错能兜——确定性规则前置、模型辅助判断、人工复核兜底。
+      </p>
+
+      <p class='max-w-2xl text-sm leading-6 text-muted-foreground'>
+        关注可复核的状态账本、写入门禁与评测闭环，在单人闭环下独立推进需求拆解、交互原型与工程落地。
+      </p>
+    </div>
+
+    <div class='flex flex-wrap items-center gap-x-3 gap-y-2.5 pt-1'>
+      <a
+        href='/projects'
+        data-astro-prefetch
+        class='inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+      >
+        <span>查看代表项目</span>
+        <span aria-hidden='true'>→</span>
+      </a>
+
+      <a
+        href='/projects/finance-review-agent/demo/'
+        class='inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+      >
+        <span>财务 Agent 在线 Demo</span>
+        <span aria-hidden='true'>→</span>
+      </a>
+
+      <div class='flex flex-wrap items-center gap-x-4 gap-y-1 pl-1 text-sm text-muted-foreground'>
+        <a href='/about' data-astro-prefetch class='transition hover:text-primary'>
+          关于与能力边界
+        </a>
+        <a
+          href='https://github.com/b00ml'
+          target='_blank'
+          rel='noopener noreferrer'
+          class='inline-flex items-center gap-0.5 transition hover:text-primary'
+        >
+          <span>GitHub</span>
+          <span aria-hidden='true'>↗</span>
+        </a>
+        <a href='mailto:peik10421@163.com' class='transition hover:text-primary'> 邮箱 </a>
+      </div>
+    </div>
+  </section>
+
+  <div id='content' class='animate flex flex-col gap-y-12 sm:gap-y-14'>
+    <section aria-labelledby='section-featured-projects' class='flex flex-col gap-y-5'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+        <div class='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+          <h2
+            id='section-featured-projects'
+            class='text-xl font-semibold tracking-tight text-foreground'
+          >
+            代表项目
+          </h2>
+          <p class='text-sm text-muted-foreground'>完整交付链路、关键架构取舍与可交互验证入口</p>
+        </div>
+        <a
+          href='/projects'
+          data-astro-prefetch
+          class='text-sm text-muted-foreground transition hover:text-primary'
+        >
+          查看全部项目 →
+        </a>
+      </div>
+
+      {
+        featuredProjects.length > 0 ? (
+          <ul class='grid gap-4 sm:grid-cols-2'>
+            {featuredProjects.map((project) => (
+              <li class='min-w-0'>
+                <ProjectCard project={project} headingTag='h3' />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class='text-sm text-muted-foreground'>暂无代表项目。</p>
+        )
+      }
+    </section>
+
+    <section aria-labelledby='section-featured-writing' class='flex flex-col gap-y-5'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+        <div class='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+          <h2
+            id='section-featured-writing'
+            class='text-xl font-semibold tracking-tight text-foreground'
+          >
+            精选文章
+          </h2>
+          <p class='text-sm text-muted-foreground'>工程方法论与垂直 Agent 产品边界拆解</p>
+        </div>
+        <div class='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm'>
+          <a
+            href='/blog'
+            data-astro-prefetch
+            class='text-muted-foreground transition hover:text-primary'
+          >
+            全部技术文章 →
+          </a>
+          <a
+            href='/product'
+            data-astro-prefetch
+            class='text-muted-foreground transition hover:text-primary'
+          >
+            全部产品思考 →
+          </a>
+        </div>
+      </div>
+
+      {
+        featuredWriting.length > 0 ? (
+          <ul class='grid gap-3.5 sm:grid-cols-2'>
+            {featuredWriting.map((item) => {
+              const dateStr = formatDateYmd(item.pubDate)
+              return (
+                <li class='min-w-0'>
+                  <article class='h-full'>
+                    <a
+                      href={item.href}
+                      data-astro-prefetch
+                      class='group flex h-full flex-col gap-2.5 rounded-xl border border-border/80 bg-muted/30 p-4 transition hover:border-foreground/20 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                    >
+                      <div class='flex items-center justify-between gap-2 text-xs'>
+                        <span
+                          class:list={[
+                            'rounded-md px-2 py-0.5 font-medium',
+                            item.collection === 'blog'
+                              ? 'bg-primary/10 text-primary'
+                              : 'border border-border bg-background text-foreground/85'
+                          ]}
+                        >
+                          {item.collectionLabel}
+                        </span>
+                        <time
+                          datetime={dateStr}
+                          class='font-mono tabular-nums text-muted-foreground'
+                        >
+                          {dateStr}
+                        </time>
+                      </div>
+
+                      <h3 class='text-base font-medium leading-snug text-foreground transition-colors group-hover:text-primary'>
+                        {item.title}
+                      </h3>
+
+                      <p class='line-clamp-3 text-sm leading-6 text-muted-foreground'>
+                        {item.description}
+                      </p>
+
+                      {item.tags.length > 0 && (
+                        <div class='mt-auto flex flex-wrap gap-1.5 pt-1 text-xs text-muted-foreground'>
+                          {item.tags.slice(0, 3).map((tag) => (
+                            <span class='rounded-md bg-muted px-2 py-0.5'>#{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </a>
+                  </article>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p class='text-sm text-muted-foreground'>暂无精选文章。</p>
+        )
+      }
+    </section>
+
+    <section aria-labelledby='section-recent-notes' class='flex flex-col gap-y-3'>
+      <div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+        <div class='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+          <h2
+            id='section-recent-notes'
+            class='text-xl font-semibold tracking-tight text-foreground'
+          >
+            近期笔记
+          </h2>
+          <p class='text-sm text-muted-foreground'>日常学习与碎片记录，与精选文章独立分流</p>
+        </div>
+        <a
+          href='/notes'
+          data-astro-prefetch
+          class='text-sm text-muted-foreground transition hover:text-primary'
+        >
+          查看全部笔记 →
+        </a>
+      </div>
+
+      {
+        recentNotes.length > 0 ? (
+          <ul class='flex flex-col gap-0.5'>
+            {recentNotes.map((note) => {
+              const dateStr = formatDateYmd(note.pubDate)
+              return (
+                <li class='min-w-0'>
+                  <a
+                    href={note.href}
+                    data-astro-prefetch
+                    class='group -mx-2.5 flex items-baseline gap-4 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                  >
+                    <time
+                      datetime={dateStr}
+                      class='shrink-0 font-mono text-xs tabular-nums text-muted-foreground'
+                    >
+                      {dateStr}
+                    </time>
+                    <span class='min-w-0 truncate text-sm text-foreground/90 transition-colors group-hover:text-primary'>
+                      {note.title}
+                    </span>
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p class='text-sm text-muted-foreground'>暂无笔记记录。</p>
+        )
+      }
+    </section>
+  </div>
+</main>
