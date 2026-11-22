@@ -1,5 +1,4 @@
 ---
-import { listingMetadata } from '@/lib/seo/metadata'
 /**
  * Notes Module - /notes
  * A knowledge base for ideas, snippets, and semi-finished materials.
@@ -8,10 +7,11 @@ import { listingMetadata } from '@/lib/seo/metadata'
 import type { GetStaticPaths, Page } from 'astro'
 import type { CollectionEntry } from 'astro:content'
 import { getCollection } from 'astro:content'
+import { listingMetadata } from '@/lib/seo/metadata'
 
-import Paginator from '@/components/pure/Paginator.astro'
 import { Button, Icon } from 'astro-pure/user'
 import PageLayout from '@/layouts/BaseLayout.astro'
+import Paginator from '@/components/pure/Paginator.astro'
 
 export const prerender = true
 
@@ -58,7 +58,7 @@ const paginationProps = {
 ---
 
 <PageLayout {meta}>
-  <Button title='Back' href='/' style='back' />
+  <Button title='返回' href='/' style='back' />
 
   <main class='mt-6 lg:mt-10'>
     <div id='content-header' class='animate'>
@@ -67,7 +67,7 @@ const paginationProps = {
           <span class='text-2xl'>📒</span>
         </div>
         <div>
-          <h1 class='text-3xl font-medium'>Notes</h1>
+          <h1 class='text-3xl font-medium'>笔记</h1>
           <p class='text-sm text-muted-foreground'>短记录 · 可能还没写完</p>
         </div>
       </div>
@@ -79,10 +79,10 @@ const paginationProps = {
 
     {
       page.data.length === 0 ? (
-        <p class='mt-8'>No note entries yet.</p>
+        <p class='mt-8 text-muted-foreground'>还没有笔记。</p>
       ) : (
         <div class='mt-10 grid gap-y-16 sm:grid-cols-[3fr_1fr] sm:gap-x-8'>
-          <section id='content' class='animate' aria-label='Note entries'>
+          <section id='content' class='animate' aria-label='笔记列表'>
             <div class='mb-3 flex flex-col justify-between text-sm text-muted-foreground sm:mb-5 sm:flex-row'>
               <span>
                 显示第 {page.start + 1}-{page.end + 1} 条，共 {page.total} 条
@@ -159,7 +159,7 @@ const paginationProps = {
                 <div class='mb-4 flex items-center justify-between'>
                   <h2 class='flex items-center text-lg font-semibold'>
                     <Icon name='tag-2' class='me-2' />
-                    Tags
+                    标签
                   </h2>
                   <a href='/notes/tags' class='text-xs text-muted-foreground hover:text-foreground'>
                     查看全部 →

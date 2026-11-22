@@ -1,20 +1,20 @@
 ---
-import PFSearch from '@/components/pure/PFSearch.astro'
 import { Button } from 'astro-pure/user'
 import PageLayout from '@/layouts/BaseLayout.astro'
+import PFSearch from '@/components/pure/PFSearch.astro'
 
 const meta = {
-  description: 'Search across every post, note and product write-up',
+  description: '搜索站内全部文章、笔记与项目记录',
   noindex: true,
-  title: 'Search'
+  title: '搜索'
 }
 ---
 
 <PageLayout {meta}>
-  <Button title='Back' href='/' style='back' />
+  <Button title='返回' href='/' style='back' />
   <main class='mt-6 lg:mt-10'>
     <div id='content-header' class='animate'>
-      <h1 class='mb-6 text-3xl font-medium'>Search</h1>
+      <h1 class='mb-6 text-3xl font-medium'>搜索</h1>
     </div>
 
     <div id='content' class='animate'>

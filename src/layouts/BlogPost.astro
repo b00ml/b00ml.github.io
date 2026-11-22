@@ -6,12 +6,12 @@ import { contentLastModified } from '@/lib/seo/lastmod'
 // Plugin styles
 import 'katex/dist/katex.min.css'
 
-import ArticleBottom from '@/components/pure/ArticleBottom.astro'
-import Hero from '@/components/pure/Hero.astro'
-import MediumZoom from '@/components/MediumZoom.astro'
 import PageLayout from '@/layouts/ContentLayout.astro'
 import JsonLd from '@/components/JsonLd.astro'
+import MediumZoom from '@/components/MediumZoom.astro'
 import TableOfContents from '@/components/navigation/TableOfContents.astro'
+import ArticleBottom from '@/components/pure/ArticleBottom.astro'
+import Hero from '@/components/pure/Hero.astro'
 import { integ } from '@/site-config'
 
 interface Props {
@@ -66,7 +66,7 @@ const breadcrumbLd = {
   '@type': 'BreadcrumbList',
   itemListElement: [
     { '@type': 'ListItem', position: 1, name: '首页', item: `${origin}/` },
-    { '@type': 'ListItem', position: 2, name: 'Blog', item: `${origin}/blog` },
+    { '@type': 'ListItem', position: 2, name: '技术', item: `${origin}/blog` },
     { '@type': 'ListItem', position: 3, name: title }
   ]
 }

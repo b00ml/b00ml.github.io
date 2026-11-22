@@ -4,6 +4,7 @@
  * Shows all tags used in the notes with entry counts
  */
 import { getCollection } from 'astro:content'
+import { sectionMetadata } from '@/lib/seo/metadata'
 
 import { Button, Icon } from 'astro-pure/user'
 import PageLayout from '@/layouts/BaseLayout.astro'
@@ -29,23 +30,23 @@ const sortedTags = Object.entries(tagCounts).sort(([tagA, countA], [tagB, countB
   return tagA.localeCompare(tagB)
 })
 
-const meta = {
-  title: 'Note Tags',
-  description: 'Browse note entries by tag'
+const meta = sectionMetadata('/notes/tags') ?? {
+  title: '笔记标签',
+  description: '按标签查找笔记条目。'
 }
 ---
 
 <PageLayout {meta}>
-  <Button title='Back' href='/notes' style='back' />
+  <Button title='返回' href='/notes' style='back' />
 
   <main class='mt-6 lg:mt-10'>
     <div id='content-header' class='animate'>
       <h1 class='mb-2 flex items-center gap-2 text-3xl font-medium'>
         <Icon name='tag-2' />
-        Note Tags
+        笔记标签
       </h1>
       <p class='mb-6 text-muted-foreground'>
-        Browse {sortedTags.length} tags across {allNotes.length} note entries
+        共 {sortedTags.length} 个标签，覆盖 {allNotes.length} 条笔记
       </p>
     </div>
 
@@ -69,11 +70,7 @@ const meta = {
         }
       </div>
 
-      {
-        sortedTags.length === 0 && (
-          <p class='text-muted-foreground'>No tags found in note entries.</p>
-        )
-      }
+      {sortedTags.length === 0 && <p class='text-muted-foreground'>还没有笔记标签。</p>}
     </section>
   </main>
 </PageLayout>

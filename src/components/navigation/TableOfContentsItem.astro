@@ -1,5 +1,6 @@
 ---
 import { cn } from 'astro-pure/utils'
+
 import type { TocItem } from './toc'
 
 interface Props {
@@ -20,7 +21,7 @@ const text = rawText.endsWith('#') ? rawText.slice(0, -1) : rawText
     ></span>
     <a
       data-toc-link
-      aria-label={`Scroll to section: ${text}`}
+      aria-label={`跳转到章节：${text}`}
       class={cn(
         'toc-item line-clamp-2 px-3 py-1 ms-2 text-foreground/75 transition-all hover:text-foreground [&.highlight]:font-medium [&.highlight]:text-primary [&.is-read]:text-input [&.highlight-bg-translucent]:bg-muted',
         depth > 2 && 'ps-7'
