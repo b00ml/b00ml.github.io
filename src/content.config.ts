@@ -21,6 +21,8 @@ const entrySchema = ({ image }: SchemaContext) =>
     updatedDate: z.coerce.date().optional(),
     tags: z.array(z.string()).default([]).transform(removeDupsAndLowerCase),
     draft: z.boolean().default(false),
+    featured: z.boolean().default(false),
+    featuredOrder: z.number().int().positive().optional(),
     cover: z
       .object({
         src: image(),

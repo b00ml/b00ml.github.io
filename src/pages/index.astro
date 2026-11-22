@@ -1,148 +1,29 @@
 ---
 import { getCollection } from 'astro:content'
-import { isProjectRoot, projectPath } from '@/lib/projects/entries'
-import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
+import { buildHomeViewModel } from '@/lib/curation/home'
+import { sectionMetadata } from '@/lib/seo/metadata'
 
-import { Button } from 'astro-pure/user'
 import PageLayout from '@/layouts/BaseLayout.astro'
-import LinkCard from '@/components/home/LinkCard.astro'
-import Section from '@/components/home/Section.astro'
-import PostPreview from '@/components/pure/PostPreview.astro'
+import HomeLanding from '@/components/home/HomeLanding.astro'
 import config from '@/site-config'
 
 export const prerender = true
 
-const newestFirst = <T extends { data: { pubDate: Date; draft: boolean } }>(entries: T[]) =>
-  entries
-    .filter((entry) => !entry.data.draft)
-    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime())
+const [projects, blog, product, notes] = await Promise.all([
+  getCollection('projects'),
+  getCollection('blog'),
+  getCollection('product'),
+  getCollection('notes')
+])
 
-const posts = newestFirst(await getCollection('blog')).slice(0, 5)
-const notes = newestFirst(await getCollection('notes')).slice(0, 5)
-const products = newestFirst(await getCollection('product')).slice(0, 3)
-const projects = newestFirst(await getCollection('projects')).filter(isProjectRoot)
+const viewModel = buildHomeViewModel({ projects, blog, product, notes })
 
-const meta = {
+const meta = sectionMetadata('/') ?? {
   title: '首页',
   description: config.description
 }
 ---
 
 <PageLayout {meta}>
-  <main class='mt-6 flex flex-col gap-y-16 lg:mt-10'>
-    <div id='content-header' class='animate'>
-      <h1 class='mb-4 text-3xl font-medium'>peik1</h1>
-      <p class='max-w-2xl text-muted-foreground'>
-        写 AI Agent、软件工程和产品思考。这里是长文、短记录和产品拆解汇在一起的地方。
-      </p>
-      <p class='mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm'>
-        <a
-          class='text-muted-foreground hover:text-foreground'
-          href='https://github.com/b00ml'
-          target='_blank'
-          rel='noopener noreferrer'>GitHub</a
-        >
-        <a class='text-muted-foreground hover:text-foreground' href='mailto:peik10421@163.com'
-          >邮件</a
-        >
-        <a class='text-muted-foreground hover:text-foreground' href='/rss.xml'>RSS</a>
-      </p>
-    </div>
-
-    <Section title='关于' class='animate'>
-      <p>产品工程师，做产品设计 × AI 应用落地。</p>
-      <p class='text-muted-foreground'>
-        反复回答的只有一个问题：「AI
-        能不能帮我干这个」——不追通用的答案，把一个个具体流程真的做到能跑、能测、出错能兜。
-      </p>
-      <Button title='更多关于我' class='w-fit' href='/about' style='pill' />
-    </Section>
-
-    <Section title='技术' class='animate'>
-      {
-        posts.length > 0 ? (
-          <ul class='flex flex-col gap-y-4 text-start'>
-            {posts.map((post) => (
-              <PostPreview {post} detailed />
-            ))}
-          </ul>
-        ) : (
-          <p class='text-muted-foreground'>还没有文章。</p>
-        )
-      }
-      <Button title='全部文章' class='w-fit' href='/blog' style='pill' />
-    </Section>
-
-    <Section title='笔记' class='animate'>
-      {
-        notes.length > 0 ? (
-          <ul class='flex flex-col gap-y-3'>
-            {notes.map((note) => (
-              <li>
-                <LinkCard
-                  href={`/notes/${note.id}`}
-                  heading={note.data.title}
-                  subheading={note.data.description}
-                  target='_self'
-                />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class='text-muted-foreground'>还没有笔记。</p>
-        )
-      }
-      <Button title='全部笔记' class='w-fit' href='/notes' style='pill' />
-    </Section>
-
-    <Section title='产品' class='animate'>
-      {
-        products.length > 0 ? (
-          <ul class='flex flex-col gap-y-3'>
-            {products.map((entry) => (
-              <li>
-                <LinkCard
-                  href={`/product/${entry.id}`}
-                  heading={entry.data.title}
-                  subheading={entry.data.description}
-                  target='_self'
-                />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class='text-muted-foreground'>还没有产品笔记。</p>
-        )
-      }
-      <Button title='全部产品文章' class='w-fit' href='/product' style='pill' />
-    </Section>
-
-    <Section title='项目' class='animate'>
-      {
-        projects.length > 0 ? (
-          <ul class='flex flex-col gap-y-3'>
-            {projects.map((project) => (
-              <li>
-                <LinkCard
-                  href={`/projects/${projectPath(project)}`}
-                  heading={project.data.title}
-                  subheading={project.data.description}
-                  target='_self'
-                >
-                  <p class='text-sm text-muted-foreground'>
-                    {STATUS_LABELS[(project.data.status ?? 'shipped') as ProjectStatus]}
-                    {project.data.period && ` · ${project.data.period}`}
-                    {project.data.role && ` · ${project.data.role}`}
-                  </p>
-                </LinkCard>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class='text-muted-foreground'>还没有项目。</p>
-        )
-      }
-      <Button title='全部项目' class='w-fit' href='/projects' style='pill' />
-    </Section>
-  </main>
+  <HomeLanding {viewModel} />
 </PageLayout>
