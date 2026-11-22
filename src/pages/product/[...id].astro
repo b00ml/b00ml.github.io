@@ -91,7 +91,13 @@ const breadcrumbLd = {
         tags.length > 0 && (
           <div class='flex flex-wrap items-center gap-2'>
             {tags.map((tag) => (
-              <span class='rounded-md bg-muted px-2 py-1'>{tag}</span>
+              <a
+                href={`/product/tags/${tag}`}
+                class='inline-flex items-center rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-xs text-muted-foreground transition hover:border-foreground/25 hover:bg-muted hover:text-foreground'
+                data-astro-prefetch
+              >
+                {tag}
+              </a>
             ))}
           </div>
         )

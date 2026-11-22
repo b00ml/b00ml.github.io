@@ -8,7 +8,8 @@ const sections: Record<string, [string, string]> = {
   '/projects': ['项目', 'peik1 做过的项目：做的是什么、我负责哪一段、关键取舍和它现在的状态。'],
   '/product': ['产品', '产品拆解、需求分析与设计取舍的记录。'],
   '/tags': ['博客标签', '按主题浏览博客文章，从标签进入相关技术实践、原理解析与学习记录。'],
-  '/notes/tags': ['笔记标签', '按标签查找学习笔记、代码片段、研究记录与尚在完善的想法。']
+  '/notes/tags': ['笔记标签', '按标签查找学习笔记、代码片段、研究记录与尚在完善的想法。'],
+  '/product/tags': ['产品标签', '按主题浏览产品思考，从标签进入产品拆解、需求分析与设计取舍。']
 }
 
 export function sectionMetadata(pathname: string) {
