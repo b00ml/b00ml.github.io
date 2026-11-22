@@ -5,8 +5,19 @@ pubDate: 2026-10-18
 status: shipped
 role: 产品与实现
 period: '2026'
+order: 3
+highlights:
+  - 1,154 项自动化测试（63 项真实 PG 集成）· 84.05% 覆盖率
+  - 规则前置 → 双轮 Judge → 人工终审三层质检
+  - Outbox 投递 + 三层幂等 · 44/44 原文页码回溯
 stack: [出题流水线, 规则质检, 人工审核]
-links: []
+links:
+  - label: 三层质检闭环
+    href: /projects/english-content-workbench/quality-loop
+  - label: 跨系统一致性
+    href: /projects/english-content-workbench/reliability
+  - label: 原文回溯检索
+    href: /projects/english-content-workbench/rag
 ---
 
 ## 它能完整办成的一件事

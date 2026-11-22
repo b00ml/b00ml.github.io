@@ -7,14 +7,16 @@ import { filterTocHeadings } from '@/components/navigation/toc'
 
 interface Props {
   title: string
+  description?: string
   headings?: MarkdownHeading[]
 }
 
-const { title, headings, ...props } = Astro.props
+const { title, description, headings, ...props } = Astro.props
+const meta = description ? { title, description } : { title }
 const tocHeadings = filterTocHeadings(headings)
 ---
 
-<PageLayout meta={{ title }} {...props}>
+<PageLayout {meta} {...props}>
   {!!tocHeadings.length && <TableOfContents headings={tocHeadings} slot='sidebar' />}
 
   <Fragment slot='header'>

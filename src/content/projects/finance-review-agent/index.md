@@ -6,11 +6,18 @@ updatedDate: 2026-10-23
 status: shipped
 role: 产品设计
 period: '2026'
+order: 1
+highlights:
+  - M2 报销 / M3 发票 / M4 对账三条业务链路
+  - 任务执行 · 人工复核 Gate · ERP 审批三态分离
+  - 公开 30 单 F1 1.0 · 混合检索 Recall@8 1.00 · 来源回溯校验
 stack: [规则引擎, OCR, LLM 复核]
 links:
-  - label: 体验虚拟 Demo
-    href: https://b00ml.github.io/projects/finance-review-agent/demo/
-  - label: 查看源码
+  - label: 体验交互 Demo
+    href: /projects/finance-review-agent/demo/
+  - label: 交互架构图
+    href: /diagrams/qiheng-architecture.html
+  - label: 开源仓库
     href: https://github.com/b00ml/AI-financialAgent-POC
 ---
 
