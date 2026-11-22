@@ -276,7 +276,8 @@ bun run publish [--apply]
   只来自 frontmatter，不来自 `--tags` 之类的参数。
 - 正文只改写图片引用和第一个 H1。Obsidian callout、站内 `[[链接]]`、脚注等语法原样保留，需要人改写。
 - 工具写出的 frontmatter 是 `title` / `description` / `pubDate`，以及非空时的 `tags`。源笔记的 `updated`、
-  `status: draft`、`aliases`、`cover` 都不会进文章；要 `updatedDate` 或 `draft`，入库后手工补。
+  `status: draft`、`aliases`、`cover` 都不会进文章；要 `updatedDate`、`draft`、`featured`、`featuredOrder` 或
+  `hideFromHome`，入库后手工补（后续 `ingest` 覆盖已有文章时同样会被剥离，需重新补回）。
 
 ## 六个已知失败模式
 
@@ -292,7 +293,8 @@ bun run publish [--apply]
    链接。
 4. **多余 frontmatter 字段会被静默丢弃。** 旧文档说 schema 会拒绝多余字段，实测不会：未知键被剥离，构建
    照常成功。工具只写 `title` / `description` / `pubDate` / `tags`，所以 `updated`、`status: draft`、
-   `aliases`、`cover` 都不会进文章。要 `updatedDate` 或 `draft`，入库后手工补。
+   `aliases`、`cover` 都不会进文章。要 `updatedDate`、`draft`、`featured`、`featuredOrder` 或
+   `hideFromHome`，入库后手工补（`ingest` 覆盖已有文章时也会剥离这些手工字段）。
 5. **图片路径写错，构建直接失败。** `../../assets/...` 少一层、文件名拼错，都会报 `image-not-found`，构建以
    9 退出，不会静默出坏图。`ingest` 写盘前会解析并核对附件，找不到就以 2 退出；但入库后手工改路径仍会踩。
 6. **推送被 `github.com:443` 拦截。** 校园网或代理没开时，`publish --apply` 以 7 退出，本地提交保留。网络

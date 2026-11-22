@@ -4,6 +4,7 @@
  * Shows all tags used in the notes with entry counts
  */
 import { getCollection } from 'astro:content'
+import { countAndSortTags } from '@/lib/content/tags'
 import { sectionMetadata } from '@/lib/seo/metadata'
 
 import { Button, Icon } from 'astro-pure/user'
@@ -12,23 +13,7 @@ import PageLayout from '@/layouts/BaseLayout.astro'
 export const prerender = true
 
 const allNotes = (await getCollection('notes')).filter((entry) => !entry.data.draft)
-
-// Count entries per tag
-const tagCounts = allNotes.reduce(
-  (acc, entry) => {
-    entry.data.tags.forEach((tag) => {
-      acc[tag] = (acc[tag] || 0) + 1
-    })
-    return acc
-  },
-  {} as Record<string, number>
-)
-
-// Sort tags by count (descending), then alphabetically
-const sortedTags = Object.entries(tagCounts).sort(([tagA, countA], [tagB, countB]) => {
-  if (countB !== countA) return countB - countA
-  return tagA.localeCompare(tagB)
-})
+const sortedTags = countAndSortTags(allNotes)
 
 const meta = sectionMetadata('/notes/tags') ?? {
   title: '笔记标签',

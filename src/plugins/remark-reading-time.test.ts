@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Root } from 'mdast'
 
-import { calculateReadingTime, remarkReadingTime } from './remark-reading-time'
+import { calculateReadingTime, formatReadingTime, remarkReadingTime } from './remark-reading-time'
 
 describe('calculateReadingTime', () => {
   test('uses 350 characters per minute for Chinese text', () => {
@@ -42,5 +42,10 @@ describe('calculateReadingTime', () => {
 
     expect(frontmatter.minutesRead).toBe('2 分钟阅读')
     expect(frontmatter.words).toBe(700)
+  })
+
+  test('formats standalone reading time with a 1-minute floor', () => {
+    expect(formatReadingTime('短句')).toBe('1 分钟阅读')
+    expect(formatReadingTime('中'.repeat(1050))).toBe('3 分钟阅读')
   })
 })

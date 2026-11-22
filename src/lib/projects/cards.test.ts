@@ -1,15 +1,10 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 
-import { CONTENT_DIRS, findEntryFile, readFrontmatter } from '../content/entries'
-import {
-  buildProjectCards,
-  isExternalProjectLink,
-  type ProjectEntryInput,
-  type ProjectLink
-} from './cards'
-import type { ProjectStatus } from './status'
+import { CONTENT_DIRS, findEntryFile } from '../content/entries'
+import { loadProjectCollection } from '../content/test-fixtures'
+import { buildProjectCards, isExternalProjectLink, type ProjectEntryInput } from './cards'
 
 const entry = (
   id: string,
@@ -27,24 +22,27 @@ const entry = (
 
 describe('buildProjectCards', () => {
   test('maps root projects and counts sub-pages per root without listing sub-pages as cards', () => {
-    const cards = buildProjectCards([
-      entry('alpha/index', '2026-10-18T00:00:00.000Z', {
-        title: 'Alpha Workbench',
-        description: 'Alpha overview description',
-        status: 'ongoing',
-        role: '独立开发',
-        period: '2026 至今',
-        highlights: ['3,778 项回归测试', '五套独立状态账本'],
-        stack: ['TypeScript', 'LLM'],
-        links: [{ label: '交互架构图', href: '/diagrams/ark-architecture.html' }]
-      }),
-      entry('alpha/pipeline', '2026-10-18T00:00:00.000Z', { summary: '摄入与编译' }),
-      entry('alpha/runtime', '2026-10-18T00:00:00.000Z', { summary: '运行时与控制面' }),
-      entry('solo', '2026-09-01T00:00:00.000Z', {
-        title: 'Solo Tool',
-        description: 'Single-page project'
-      })
-    ])
+    const cards = buildProjectCards(
+      [
+        entry('alpha/index', '2026-10-18T00:00:00.000Z', {
+          title: 'Alpha Workbench',
+          description: 'Alpha overview description',
+          status: 'ongoing',
+          role: '独立开发',
+          period: '2026 至今',
+          highlights: ['3,778 项回归测试', '五套独立状态账本'],
+          stack: ['TypeScript', 'LLM'],
+          links: [{ label: '交互架构图', href: '/diagrams/ark-architecture.html' }]
+        }),
+        entry('alpha/pipeline', '2026-10-18T00:00:00.000Z', { summary: '摄入与编译' }),
+        entry('alpha/runtime', '2026-10-18T00:00:00.000Z', { summary: '运行时与控制面' }),
+        entry('solo', '2026-09-01T00:00:00.000Z', {
+          title: 'Solo Tool',
+          description: 'Single-page project'
+        })
+      ],
+      { isProd: true }
+    )
 
     expect(cards).toEqual([
       {
@@ -75,18 +73,21 @@ describe('buildProjectCards', () => {
   })
 
   test('sorts root projects by order ascending then pubDate descending and prefers explicit summary', () => {
-    const cards = buildProjectCards([
-      entry('older-order-1/index', '2026-05-01T00:00:00.000Z', {
-        order: 1,
-        summary: 'Explicit concise summary'
-      }),
-      entry('newer-order-2/index', '2026-11-01T00:00:00.000Z', {
-        order: 2
-      }),
-      entry('newer-order-1/index', '2026-10-01T00:00:00.000Z', {
-        order: 1
-      })
-    ])
+    const cards = buildProjectCards(
+      [
+        entry('older-order-1/index', '2026-05-01T00:00:00.000Z', {
+          order: 1,
+          summary: 'Explicit concise summary'
+        }),
+        entry('newer-order-2/index', '2026-11-01T00:00:00.000Z', {
+          order: 2
+        }),
+        entry('newer-order-1/index', '2026-10-01T00:00:00.000Z', {
+          order: 1
+        })
+      ],
+      { isProd: true }
+    )
 
     expect(cards.map((card) => card.slug)).toEqual([
       'newer-order-1',
@@ -117,7 +118,7 @@ describe('buildProjectCards', () => {
   })
 
   test('supports featuredOnly curation with fallback when no root is marked featured, and handles empty input', () => {
-    expect(buildProjectCards([])).toEqual([])
+    expect(buildProjectCards([], { isProd: true })).toEqual([])
 
     const items = [
       entry('flagship/index', '2026-10-18T00:00:00.000Z', { featured: true, order: 2 }),
@@ -125,7 +126,7 @@ describe('buildProjectCards', () => {
       entry('secondary/index', '2026-10-18T00:00:00.000Z', { featured: false, order: 1 })
     ]
 
-    expect(buildProjectCards(items, { featuredOnly: true })).toEqual([
+    expect(buildProjectCards(items, { isProd: true, featuredOnly: true })).toEqual([
       expect.objectContaining({ slug: 'flagship', partCount: 1 })
     ])
 
@@ -133,52 +134,15 @@ describe('buildProjectCards', () => {
       ...item,
       data: { ...item.data, featured: false }
     }))
-    expect(buildProjectCards(unfeatured, { featuredOnly: true }).map((card) => card.slug)).toEqual([
-      'secondary',
-      'flagship'
-    ])
+    expect(
+      buildProjectCards(unfeatured, { isProd: true, featuredOnly: true }).map((card) => card.slug)
+    ).toEqual(['secondary', 'flagship'])
   })
 })
 
-function collectMarkdownFiles(dir: string): string[] {
-  const out: string[] = []
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name)
-    if (statSync(full).isDirectory()) {
-      out.push(...collectMarkdownFiles(full))
-    } else if (/\.mdx?$/.test(name)) {
-      out.push(full)
-    }
-  }
-  return out
-}
-
 describe('repository project content contract', () => {
   test('all three root projects carry verified highlights and resolvable links', () => {
-    const projectsRoot = resolve(CONTENT_DIRS.projects)
-    const entries: ProjectEntryInput[] = collectMarkdownFiles(projectsRoot).map((filePath) => {
-      const id = relative(projectsRoot, filePath)
-        .replace(/\\/g, '/')
-        .replace(/\.mdx?$/, '')
-      const fm = readFrontmatter(filePath)
-      return {
-        id,
-        data: {
-          title: String(fm.title ?? ''),
-          description: String(fm.description ?? ''),
-          pubDate: fm.pubDate instanceof Date ? fm.pubDate : new Date(String(fm.pubDate)),
-          draft: Boolean(fm.draft ?? false),
-          status: fm.status as ProjectStatus | undefined,
-          role: typeof fm.role === 'string' ? fm.role : undefined,
-          period: typeof fm.period === 'string' ? fm.period : undefined,
-          stack: Array.isArray(fm.stack) ? fm.stack.map(String) : [],
-          order: typeof fm.order === 'number' ? fm.order : 0,
-          summary: typeof fm.summary === 'string' ? fm.summary : undefined,
-          highlights: Array.isArray(fm.highlights) ? fm.highlights.map(String) : [],
-          links: Array.isArray(fm.links) ? (fm.links as ProjectLink[]) : []
-        }
-      }
-    })
+    const entries = loadProjectCollection(CONTENT_DIRS.projects)
 
     const cards = buildProjectCards(entries, { isProd: true })
     const bySlug = new Map(cards.map((card) => [card.slug, card]))
@@ -219,8 +183,10 @@ describe('repository project content contract', () => {
 })
 
 describe('project card template and page hygiene', () => {
-  test('distinguishes external URLs from root-relative project links', () => {
+  test('distinguishes external http(s) URLs from root-relative and mailto project links', () => {
     expect(isExternalProjectLink('https://github.com/b00ml/AI-financialAgent-POC')).toBe(true)
+    expect(isExternalProjectLink('http://example.com/demo')).toBe(true)
+    expect(isExternalProjectLink('mailto:peik10421@163.com')).toBe(false)
     expect(isExternalProjectLink('/projects/finance-review-agent/demo/')).toBe(false)
     expect(isExternalProjectLink('/diagrams/ark-architecture.html')).toBe(false)
   })

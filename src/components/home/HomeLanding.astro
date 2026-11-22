@@ -166,19 +166,24 @@ const { featuredProjects, featuredWriting, recentNotes } = viewModel
                         >
                           {item.collectionLabel}
                         </span>
-                        <time
-                          datetime={dateStr}
-                          class='font-mono tabular-nums text-muted-foreground'
-                        >
-                          {dateStr}
-                        </time>
+                        <div class='flex items-center gap-1.5 text-muted-foreground'>
+                          <time datetime={dateStr} class='home-date'>
+                            {dateStr}
+                          </time>
+                          {item.readingTime && (
+                            <>
+                              <span aria-hidden='true'>·</span>
+                              <span class='home-date'>{item.readingTime}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
 
                       <h3 class='text-base font-medium leading-snug text-foreground transition-colors group-hover:text-primary'>
                         {item.title}
                       </h3>
 
-                      <p class='line-clamp-3 text-sm leading-6 text-muted-foreground'>
+                      <p class='home-writing-desc text-sm leading-6 text-muted-foreground'>
                         {item.description}
                       </p>
 
@@ -235,7 +240,7 @@ const { featuredProjects, featuredWriting, recentNotes } = viewModel
                   >
                     <time
                       datetime={dateStr}
-                      class='shrink-0 font-mono text-xs tabular-nums text-muted-foreground'
+                      class='home-date shrink-0 text-xs text-muted-foreground'
                     >
                       {dateStr}
                     </time>
@@ -254,3 +259,16 @@ const { featuredProjects, featuredWriting, recentNotes } = viewModel
     </section>
   </div>
 </main>
+
+<style>
+  .home-date {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .home-writing-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+</style>

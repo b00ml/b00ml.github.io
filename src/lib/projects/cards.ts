@@ -40,19 +40,19 @@ export type ProjectCardItem = {
 }
 
 export type BuildProjectCardsOptions = {
-  isProd?: boolean
+  isProd: boolean
   featuredOnly?: boolean
 }
 
 export function isExternalProjectLink(href: string): boolean {
-  return !href.startsWith('/')
+  return /^https?:\/\//i.test(href)
 }
 
 export function buildProjectCards(
   entries: readonly ProjectEntryInput[],
-  options: BuildProjectCardsOptions = {}
+  options: BuildProjectCardsOptions
 ): ProjectCardItem[] {
-  const { isProd = true, featuredOnly = false } = options
+  const { isProd, featuredOnly = false } = options
   const visible = isProd ? entries.filter((entry) => !entry.data.draft) : entries
   const allRoots = visible.filter(isProjectRoot)
   const featuredRoots = featuredOnly ? allRoots.filter((entry) => entry.data.featured) : []

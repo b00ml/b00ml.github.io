@@ -1,7 +1,9 @@
+import { formatReadingTime } from '../../plugins/remark-reading-time'
 import { buildProjectCards, type ProjectCardItem, type ProjectEntryInput } from '../projects/cards'
 
 export type ArticleEntryInput = {
   id: string
+  body?: string
   data: {
     title: string
     description: string
@@ -10,6 +12,7 @@ export type ArticleEntryInput = {
     draft?: boolean
     featured?: boolean
     featuredOrder?: number
+    hideFromHome?: boolean
   }
 }
 
@@ -20,6 +23,7 @@ export type FeaturedWritingItem = {
   title: string
   description: string
   pubDate: Date
+  readingTime?: string
   tags: string[]
 }
 
@@ -40,10 +44,11 @@ export type HomeCurationInput = {
   blog: readonly ArticleEntryInput[]
   product: readonly ArticleEntryInput[]
   notes: readonly ArticleEntryInput[]
-  isProd?: boolean
-  featuredWritingLimit?: number
-  recentNotesLimit?: number
+  isProd: boolean
 }
+
+const FEATURED_WRITING_LIMIT = 4
+const RECENT_NOTES_LIMIT = 5
 
 const WRITING_COLLECTION_LABELS = {
   blog: '工程实践',
@@ -71,6 +76,7 @@ function toFeaturedWritingItem({
   entry,
   href
 }: TaggedWritingCandidate): FeaturedWritingItem {
+  const body = entry.body?.trim()
   return {
     collection,
     collectionLabel: WRITING_COLLECTION_LABELS[collection],
@@ -78,6 +84,7 @@ function toFeaturedWritingItem({
     title: entry.data.title,
     description: entry.data.description,
     pubDate: entry.data.pubDate,
+    ...(body ? { readingTime: formatReadingTime(body) } : {}),
     tags: [...(entry.data.tags ?? [])]
   }
 }
@@ -87,8 +94,9 @@ export function formatDateYmd(date: Date): string {
 }
 
 export function buildHomeViewModel(input: HomeCurationInput): HomeViewModel {
-  const { isProd = true, featuredWritingLimit = 4, recentNotesLimit = 5 } = input
-  const isVisible = (entry: ArticleEntryInput): boolean => !isProd || !entry.data.draft
+  const { isProd } = input
+  const isVisible = (entry: ArticleEntryInput): boolean =>
+    !entry.data.hideFromHome && (!isProd || !entry.data.draft)
 
   const candidates: TaggedWritingCandidate[] = [
     ...input.blog.filter(isVisible).map((entry) => ({
@@ -117,7 +125,7 @@ export function buildHomeViewModel(input: HomeCurationInput): HomeViewModel {
     .sort(compareByPubDateDesc)
 
   const featuredWriting = [...featuredCandidates, ...backfillCandidates]
-    .slice(0, Math.max(0, featuredWritingLimit))
+    .slice(0, FEATURED_WRITING_LIMIT)
     .map(toFeaturedWritingItem)
 
   const recentNotes: RecentNoteItem[] = input.notes
@@ -132,7 +140,7 @@ export function buildHomeViewModel(input: HomeCurationInput): HomeViewModel {
       if (dateDiff !== 0) return dateDiff
       return a.href.localeCompare(b.href)
     })
-    .slice(0, Math.max(0, recentNotesLimit))
+    .slice(0, RECENT_NOTES_LIMIT)
 
   return {
     featuredProjects: buildProjectCards(input.projects, { isProd, featuredOnly: true }),

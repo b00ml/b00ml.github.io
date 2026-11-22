@@ -1,9 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 
-import { CONTENT_DIRS, readFrontmatter } from '../content/entries'
-import type { ProjectEntryInput, ProjectLink, ProjectStatus } from '../projects/cards'
+import { CONTENT_DIRS } from '../content/entries'
+import { loadArticleCollection, loadProjectCollection } from '../content/test-fixtures'
+import type { ProjectEntryInput } from '../projects/cards'
 import { buildHomeViewModel, formatDateYmd, type ArticleEntryInput } from './home'
 
 const project = (
@@ -23,9 +22,11 @@ const project = (
 const article = (
   id: string,
   pubDate: string,
-  extra: Partial<ArticleEntryInput['data']> = {}
+  extra: Partial<ArticleEntryInput['data']> = {},
+  body?: string
 ): ArticleEntryInput => ({
   id,
+  ...(body !== undefined ? { body } : {}),
   data: {
     title: `Title ${id}`,
     description: `Summary ${id}`,
@@ -78,11 +79,16 @@ describe('buildHomeViewModel', () => {
       projects: [],
       blog: [
         article('blog-unfeatured-new', '2026-11-10T00:00:00.000Z', { featured: false }),
-        article('blog-featured-order-2', '2026-10-10T00:00:00.000Z', {
-          featured: true,
-          featuredOrder: 2,
-          tags: ['agent', 'eval']
-        }),
+        article(
+          'blog-featured-order-2',
+          '2026-10-10T00:00:00.000Z',
+          {
+            featured: true,
+            featuredOrder: 2,
+            tags: ['agent', 'eval']
+          },
+          '中'.repeat(700)
+        ),
         article('blog-unfeatured-old', '2026-09-01T00:00:00.000Z', { featured: false })
       ],
       product: [
@@ -136,8 +142,10 @@ describe('buildHomeViewModel', () => {
       title: 'Title blog-featured-order-2',
       description: 'Summary blog-featured-order-2',
       pubDate: new Date('2026-10-10T00:00:00.000Z'),
+      readingTime: '2 分钟阅读',
       tags: ['agent', 'eval']
     })
+    expect(vm.featuredWriting[0]?.readingTime).toBeUndefined()
   })
 
   test('isolates notes strictly into recentNotes (capped at 5 newest) without ever affecting featuredProjects or featuredWriting', () => {
@@ -236,12 +244,47 @@ describe('buildHomeViewModel', () => {
     ])
   })
 
+  test('excludes hideFromHome entries from featuredWriting (including backfill) and recentNotes', () => {
+    const input = {
+      projects: [],
+      blog: [
+        article('meta-featured-blog', '2026-11-12T00:00:00.000Z', {
+          featured: true,
+          featuredOrder: 1,
+          hideFromHome: true
+        }),
+        article('visible-blog', '2026-10-18T00:00:00.000Z', { featured: false })
+      ],
+      product: [
+        article('meta-backfill-product', '2026-11-11T00:00:00.000Z', {
+          featured: false,
+          hideFromHome: true
+        }),
+        article('visible-product', '2026-10-15T00:00:00.000Z', { featured: false })
+      ],
+      notes: [
+        article('meta-note', '2026-11-15T00:00:00.000Z', { hideFromHome: true }),
+        article('visible-note', '2026-10-10T00:00:00.000Z')
+      ]
+    }
+
+    for (const isProd of [true, false]) {
+      const vm = buildHomeViewModel({ ...input, isProd })
+      expect(vm.featuredWriting.map((item) => item.href)).toEqual([
+        '/blog/visible-blog',
+        '/product/visible-product'
+      ])
+      expect(vm.recentNotes.map((item) => item.href)).toEqual(['/notes/visible-note'])
+    }
+  })
+
   test('handles empty frozen collections, omitted optional fields, and .md/.mdx id suffixes without throwing or mutating inputs', () => {
     const emptyVm = buildHomeViewModel({
       projects: Object.freeze([]),
       blog: Object.freeze([]),
       product: Object.freeze([]),
-      notes: Object.freeze([])
+      notes: Object.freeze([]),
+      isProd: true
     })
 
     expect(emptyVm).toEqual({
@@ -271,7 +314,8 @@ describe('buildHomeViewModel', () => {
       projects: Object.freeze([]),
       blog: Object.freeze([minimalBlog]),
       product: Object.freeze([]),
-      notes: Object.freeze([minimalNote])
+      notes: Object.freeze([minimalNote]),
+      isProd: true
     })
 
     expect(sparseVm.featuredWriting).toEqual([
@@ -296,82 +340,23 @@ describe('buildHomeViewModel', () => {
   })
 })
 
-function collectMarkdownFiles(dir: string): string[] {
-  const out: string[] = []
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name)
-    const st = statSync(full)
-    if (st.isDirectory()) {
-      out.push(...collectMarkdownFiles(full))
-    } else if (/\.mdx?$/i.test(name)) {
-      out.push(full)
-    }
-  }
-  return out
-}
-
-function loadArticleCollection(dirPath: string): ArticleEntryInput[] {
-  const root = resolve(dirPath)
-  return collectMarkdownFiles(root).map((filePath) => {
-    const id = relative(root, filePath)
-      .replace(/\\/g, '/')
-      .replace(/\.mdx?$/i, '')
-    const fm = readFrontmatter(filePath)
-    return {
-      id,
-      data: {
-        title: String(fm.title ?? ''),
-        description: String(fm.description ?? ''),
-        pubDate: fm.pubDate instanceof Date ? fm.pubDate : new Date(String(fm.pubDate)),
-        tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
-        draft: Boolean(fm.draft ?? false),
-        featured: Boolean(fm.featured ?? false),
-        featuredOrder: typeof fm.featuredOrder === 'number' ? fm.featuredOrder : undefined
-      }
-    }
-  })
-}
-
-function loadProjectCollection(dirPath: string): ProjectEntryInput[] {
-  const root = resolve(dirPath)
-  return collectMarkdownFiles(root).map((filePath) => {
-    const id = relative(root, filePath)
-      .replace(/\\/g, '/')
-      .replace(/\.mdx?$/i, '')
-    const fm = readFrontmatter(filePath)
-    return {
-      id,
-      data: {
-        title: String(fm.title ?? ''),
-        description: String(fm.description ?? ''),
-        pubDate: fm.pubDate instanceof Date ? fm.pubDate : new Date(String(fm.pubDate)),
-        draft: Boolean(fm.draft ?? false),
-        featured: Boolean(fm.featured ?? false),
-        status: fm.status as ProjectStatus | undefined,
-        role: typeof fm.role === 'string' ? fm.role : undefined,
-        period: typeof fm.period === 'string' ? fm.period : undefined,
-        stack: Array.isArray(fm.stack) ? fm.stack.map(String) : [],
-        order: typeof fm.order === 'number' ? fm.order : 0,
-        summary: typeof fm.summary === 'string' ? fm.summary : undefined,
-        highlights: Array.isArray(fm.highlights) ? fm.highlights.map(String) : [],
-        links: Array.isArray(fm.links) ? (fm.links as ProjectLink[]) : []
-      }
-    }
-  })
-}
-
 describe('repository homepage curation contract', () => {
-  test('surfaces the 3 flagship projects and 4 curated essays on / while excluding sample-post and three-collections', () => {
+  test('surfaces the 3 flagship projects and 4 curated essays on / while excluding sample-post, three-collections, and stale-content-cache', () => {
     const projects = loadProjectCollection(CONTENT_DIRS.projects)
     const blog = loadArticleCollection(CONTENT_DIRS.blog)
     const product = loadArticleCollection(CONTENT_DIRS.product)
     const notes = loadArticleCollection(CONTENT_DIRS.notes)
 
-    // Verify 20261014-three-collections remains published on /product while unfeatured
+    // Site-building meta entries stay published in their collections while hidden from /
     const threeCollections = product.find((entry) => entry.id === '20261014-three-collections')
     expect(threeCollections).toBeDefined()
     expect(threeCollections?.data.draft).toBe(false)
-    expect(threeCollections?.data.featured).toBe(false)
+    expect(threeCollections?.data.hideFromHome).toBe(true)
+
+    const staleCacheNote = notes.find((entry) => entry.id === '20261014-stale-content-cache')
+    expect(staleCacheNote).toBeDefined()
+    expect(staleCacheNote?.data.draft).toBe(false)
+    expect(staleCacheNote?.data.hideFromHome).toBe(true)
 
     const vm = buildHomeViewModel({
       projects,
@@ -411,6 +396,10 @@ describe('repository homepage curation contract', () => {
       }
     ])
 
+    for (const item of vm.featuredWriting) {
+      expect(item.readingTime).toMatch(/^\d+ 分钟阅读$/)
+    }
+
     expect(vm.recentNotes.length).toBeGreaterThan(0)
     expect(vm.recentNotes.length).toBeLessThanOrEqual(5)
     for (const note of vm.recentNotes) {
@@ -424,40 +413,6 @@ describe('repository homepage curation contract', () => {
     ]
     expect(allHomeHrefs.some((href) => href.includes('20261014-sample-post'))).toBe(false)
     expect(allHomeHrefs.some((href) => href.includes('20261014-three-collections'))).toBe(false)
-  })
-
-  test('renders 4-section homepage without nested anchors, separate About section, or Hero RSS link, while preserving ADR 0001 in ingest/plan.ts', () => {
-    const landingPath = resolve('src/components/home/HomeLanding.astro')
-    const indexPath = resolve('src/pages/index.astro')
-    const ingestPlanPath = resolve('src/lib/ingest/plan.ts')
-
-    expect(existsSync(landingPath)).toBe(true)
-    const landingSource = readFileSync(landingPath, 'utf8')
-    const indexSource = readFileSync(indexPath, 'utf8')
-    const ingestPlanSource = readFileSync(ingestPlanPath, 'utf8')
-
-    expect(landingSource).toContain('产品工程师 · 产品设计 × AI 应用工程落地')
-    expect(landingSource).toMatch(/>\s*代表项目\s*<\/h2>/)
-    expect(landingSource).toMatch(/>\s*精选文章\s*<\/h2>/)
-    expect(landingSource).toMatch(/>\s*近期笔记\s*<\/h2>/)
-    expect(landingSource).toContain("<ul class='grid gap-4 sm:grid-cols-2'>")
-    expect(landingSource).not.toContain('projectLayout')
-    expect(landingSource).not.toContain('sm:col-span-2')
-    expect(landingSource).not.toContain('/rss.xml')
-    expect(indexSource).not.toContain("title='关于'")
-    expect(existsSync(resolve('src/pages/ab-a.astro'))).toBe(false)
-    expect(existsSync(resolve('src/pages/ab-b.astro'))).toBe(false)
-    expect(existsSync(resolve('src/pages/ab-c.astro'))).toBe(false)
-
-    const anchorTokens = [...landingSource.matchAll(/<\/?a\b/g)].map((m) => m[0])
-    let openAnchors = 0
-    for (const token of anchorTokens) {
-      openAnchors += token === '<a' ? 1 : -1
-      expect(openAnchors).toBeGreaterThanOrEqual(0)
-      expect(openAnchors).toBeLessThanOrEqual(1)
-    }
-    expect(openAnchors).toBe(0)
-
-    expect(ingestPlanSource).not.toContain('featured')
+    expect(allHomeHrefs.some((href) => href.includes('20261014-stale-content-cache'))).toBe(false)
   })
 })

@@ -24,7 +24,7 @@ const { items, class: className } = Astro.props
 
 <nav class={cn('mt-8 border-t border-border pt-4', className)} aria-label='项目内的页面'>
   <h2 class='font-semibold'>项目篇章</h2>
-  <ul class='mt-4 space-y-1 text-card-foreground'>
+  <ul class='mt-4 flex flex-col gap-1 text-card-foreground'>
     {
       items.map((item) => (
         <li>
@@ -32,7 +32,7 @@ const { items, class: className } = Astro.props
             href={item.href}
             aria-current={item.current ? 'page' : undefined}
             class:list={[
-              'toc-item line-clamp-2 rounded-md px-3 py-1 text-foreground/75 transition-all hover:text-foreground',
+              'toc-item rounded-md px-3 py-1 text-foreground/75 transition-all hover:text-foreground',
               item.current && 'bg-muted font-medium text-primary'
             ]}
           >

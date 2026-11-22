@@ -4,6 +4,7 @@
  * Shows all tags used in published product entries with entry counts
  */
 import { getCollection } from 'astro:content'
+import { countAndSortTags } from '@/lib/content/tags'
 import { published } from '@/lib/seo/drafts'
 import { sectionMetadata } from '@/lib/seo/metadata'
 
@@ -13,21 +14,7 @@ import PageLayout from '@/layouts/BaseLayout.astro'
 export const prerender = true
 
 const allEntries = (await getCollection('product')).filter(published)
-
-const tagCounts = allEntries.reduce(
-  (acc, entry) => {
-    entry.data.tags.forEach((tag) => {
-      acc[tag] = (acc[tag] || 0) + 1
-    })
-    return acc
-  },
-  {} as Record<string, number>
-)
-
-const sortedTags = Object.entries(tagCounts).sort(([tagA, countA], [tagB, countB]) => {
-  if (countB !== countA) return countB - countA
-  return tagA.localeCompare(tagB, 'zh-CN')
-})
+const sortedTags = countAndSortTags(allEntries)
 
 const meta = sectionMetadata('/product/tags') ?? {
   title: '产品标签',

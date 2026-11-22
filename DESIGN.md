@@ -178,8 +178,8 @@ for the tablet cutoff unless you have a specific reason to diverge.
 No shadow token/CSS var — always a UnoCSS `shadow-*` utility or a
 hand-authored `box-shadow`. The live idiom is a hover affordance on
 interactive cards: `hover:shadow-sm` paired with `hover:border-foreground/25`
-(or `/20`), e.g. [`home/LinkCard.astro:31`](src/components/home/LinkCard.astro),
-[`pages/notes/[...page].astro:102`](src/pages/notes/[...page].astro). The only
+(or `/20`), e.g. [`projects/ProjectCard.astro:15`](src/components/projects/ProjectCard.astro),
+[`pages/notes/[...page].astro:100`](src/pages/notes/[...page].astro). The only
 static elevation left is the theme toast
 ([`ThemeProvider.astro:36`](src/components/ThemeProvider.astro)).
 
@@ -259,8 +259,9 @@ copying the class combo rather than a shared component prop API:
   `hover:bg-border`, `transition-colors`
   ([`Header.astro:51-68`](src/components/Header.astro)).
 - **Interactive card**: `rounded-xl`/`rounded-2xl`, `border`,
-  `hover:border-foreground/25` + `hover:shadow-sm`
-  ([`home/LinkCard.astro:31`](src/components/home/LinkCard.astro)).
+  `hover:border-foreground/20` (or `/25`) + `hover:shadow-sm`
+  ([`projects/ProjectCard.astro:15`](src/components/projects/ProjectCard.astro),
+  [`home/HomeLanding.astro:156`](src/components/home/HomeLanding.astro)).
 - **Icon/label swap control**: see
   [Blurred Icon Transition](#blurred-icon-transition) — a motion pattern, not a
   static style.
@@ -273,17 +274,17 @@ down across three content tiers below `#content-header`:
 - **Tier 1 — Featured Projects** ([`ProjectCard.astro`](src/components/projects/ProjectCard.astro)):
   `rounded-xl border border-border bg-card p-5`, `text-lg font-semibold` title,
   summary, `border-l-2 border-primary/25` quantitative highlights, stack chips,
-  and bottom action links. Arranged in an equal-width two-column grid
+  and optional bottom action links when `links` are present. Arranged in an equal-width two-column grid
   (`grid gap-4 sm:grid-cols-2`, matching `/projects`) rather than a single-column
   stack or `1 + 2` lead-grid: compact vertical density lets a reader scan all
   flagship projects and reach Featured Writing within half a scroll.
 - **Tier 2 — Featured Writing**: `rounded-xl border border-border/80 bg-muted/30 p-4`
   lifting to `hover:bg-card`, `text-base font-medium` title, collection badge
   (`bg-primary/10 text-primary` for engineering, `border-border bg-background`
-  for product), `font-mono tabular-nums` `YYYY-MM-DD` date, core argument
+  for product), Satoshi `font-variant-numeric: tabular-nums` `YYYY-MM-DD` date + reading time, core argument
   `description`, and tag chips in `grid gap-3.5 sm:grid-cols-2`.
 - **Tier 3 — Recent Notes**: borderless single-line rows (`hover:bg-muted/60`)
-  pairing `font-mono text-xs tabular-nums` `YYYY-MM-DD` dates with truncated
+  pairing Satoshi `font-variant-numeric: tabular-nums` `text-xs` `YYYY-MM-DD` dates with truncated
   `text-sm` titles — decoupled from Featured Writing so frequent short notes
   never displace curated essays or projects.
 

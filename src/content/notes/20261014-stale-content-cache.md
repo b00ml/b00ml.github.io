@@ -3,6 +3,7 @@ title: '别用 dist 判断删除是否干净'
 description: '一次差点上线的幽灵页面：源文件删了，页面还在构建。'
 pubDate: 2026-10-14
 tags: ['工程', 'Astro']
+hideFromHome: true
 ---
 
 把一个 526 文件的开源模板删到 189 个文件之后，我用"扫描 `dist/` 里有没有残留的 `joye`、`waline`、`jojo`"来验收。这个判据看起来无懈可击——直到它漏掉了两个页面。
