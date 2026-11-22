@@ -5,8 +5,19 @@ pubDate: 2026-10-18
 status: ongoing
 role: 独立开发
 period: 2026 至今
+order: 2
+highlights:
+  - 五套独立状态账本 + CAS 原子写入守卫
+  - 3,778 项统一回归测试 · 七层证据体系
+  - 人审激活记忆门禁 · 155 文件 / 563 条无损迁移
 stack: [Obsidian 插件, TypeScript, LLM, 检索]
-links: []
+links:
+  - label: 交互架构图
+    href: /diagrams/ark-architecture.html
+  - label: 副作用状态机
+    href: /diagrams/ark-operation-ledger.html
+  - label: 记忆治理图
+    href: /diagrams/ark-memory-governance.html
 ---
 
 ## 它能完整办成的一件事
