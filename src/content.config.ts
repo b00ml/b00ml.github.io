@@ -60,8 +60,14 @@ const projectSchema = ({ image }: SchemaContext) =>
     stack: z.array(z.string()).default([]),
     order: z.number().default(0),
     summary: z.string().optional(),
+    highlights: z.array(z.string()).default([]),
     links: z
-      .array(z.object({ label: z.string(), href: z.string().url() }))
+      .array(
+        z.object({
+          label: z.string(),
+          href: z.string().url().or(z.string().startsWith('/'))
+        })
+      )
       .default([])
   })
 

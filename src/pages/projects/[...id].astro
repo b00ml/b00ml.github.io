@@ -1,5 +1,6 @@
 ---
 import { getCollection, render, type CollectionEntry } from 'astro:content'
+import { isExternalProjectLink } from '@/lib/projects/cards'
 import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
 import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
 import { detailAvailable } from '@/lib/seo/drafts'
@@ -157,16 +158,19 @@ const siblings = isRoot
 
           {links.length > 0 && (
             <div class='mt-4 flex flex-wrap gap-3'>
-              {links.map((link: { label: string; href: string }) => (
-                <a
-                  href={link.href}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                  class='rounded-md border border-border px-3 py-1.5 text-sm hover:border-foreground/20'
-                >
-                  {link.label} ↗
-                </a>
-              ))}
+              {links.map((link: { label: string; href: string }) => {
+                const external = isExternalProjectLink(link.href)
+                return (
+                  <a
+                    href={link.href}
+                    target={external ? '_blank' : undefined}
+                    rel={external ? 'noopener noreferrer' : undefined}
+                    class='rounded-md border border-border px-3 py-1.5 text-sm transition hover:border-foreground/20 hover:bg-muted'
+                  >
+                    {link.label} {external ? '↗' : '→'}
+                  </a>
+                )
+              })}
             </div>
           )}
         </>
