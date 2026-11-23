@@ -14,6 +14,10 @@ summary: 跨系统一致性
 
 Trace 是第五处的记账本：先递归脱敏和截断再写 sink，sink 故障就落 spool 原子文件。一次完整链路跑下来记了 118 次模型调用——嵌入 99、生成 7、质检 12——按配置单价估算是 0.170276。
 
+![调用链路回放界面：一条内容从知识检索、模型生成、结构化校验到自动质检的完整过程。](../../../assets/english-content-workbench/trace-replay.webp)
+
+_图：第五处记账本的读法。按 trace_id 能看到每段调用的输入、输出、模型、耗时、Token、成本与失败重试，一条内容从检索走到质检的全过程都在这一屏里。点击图片可以放大。_
+
 ## 投递：把「要发」和「已发」分成两行
 
 请求进来时，task 行和 Outbox 行在同一个数据库事务里写入，事件号是 `task:<id>:dispatch`，唯一。之后 relay 读最早一条 pending，置为 sending、attempts 加一，提交，再拿稳定的事件号去投递；成功写 sent，失败回 pending 并按退避重排，次数耗尽进 dead。领取用 skip locked 加带随机租约令牌的 CAS，令牌决定谁能 ack。
