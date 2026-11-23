@@ -3,6 +3,7 @@ title: '三个集合，而不是一个'
 description: '为什么这个站点把内容切成 blog / product / notes 三份，以及这个切法放弃了什么。'
 pubDate: 2026-10-14
 tags: ['产品', '信息架构']
+featured: false
 hideFromHome: true
 ---
 

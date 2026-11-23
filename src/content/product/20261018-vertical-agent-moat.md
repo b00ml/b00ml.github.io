@@ -4,7 +4,7 @@ description: '通用 Agent 的护城河多半是假的，垂类的不是。我�
 pubDate: 2026-10-18
 tags: ['agent', '产品', 'ai']
 featured: true
-featuredOrder: 2
+featuredOrder: 4
 ---
 
 学了两个月 Agent，我一开始认定「什么都能干」才叫厉害。后来发现，凡是靠底层模型的能力撑起来的东西，模型一升级就重新洗一次牌。这篇是我把这件事想清楚的记录。
