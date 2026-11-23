@@ -7,7 +7,7 @@ import PageLayout from '@/layouts/CommonPage.astro'
 const meta = sectionMetadata('/about') ?? {
   title: '关于我',
   description:
-    '了解 peik1：产品工程师（产品设计 × AI 应用工程落地），能力栈与独立交付边界、代表项目及求职联系通道。'
+    '了解 peik1：网络空间安全专业出身的产品工程师，把最小权限、确定性前置、可追溯可回滚做成受控 AI Agent，附能力边界、代表项目与联系通道。'
 }
 
 const headings = [
@@ -21,17 +21,44 @@ const headings = [
 <PageLayout title={meta.title} description={meta.description} {headings}>
   <h2 id='positioning'>定位与工程主张</h2>
   <p>
-    我是 <strong>peik1</strong>，<strong>产品工程师</strong>（产品设计 × AI 应用工程落地）。
+    我是 <strong>peik1</strong>，<strong>产品工程师</strong>（产品设计 × AI 应用工程落地），
+    <strong>网络空间安全</strong>专业出身。
   </p>
   <p>
-    日常聚焦回答一个具体问题：「AI
-    能不能帮业务把这个活干成」。不做泛化的万能聊天框，而是把具体业务流程拆成可执行的输入输出、确定性规则前置、模型辅助判断与人工兜底边界，把整条链路做到<strong
+    常被问到的第一个问题是「安全专业为什么在做 AI Agent」。这两件事在我这里是同一条线：安全训练教的不是攻防技巧，而是四条默认设置——<strong
+      >系统边界要显式</strong
+    >、<strong>最小权限</strong>、<strong>确定性校验前置</strong>、<strong
+      >每次写入可追溯且能回滚</strong
+    >。把它们搬到 Agent 上，正好对应这个领域最难的四个问题：模型能碰什么、谁能触发、什么时候不该问模型、出错了怎么退回去。
+  </p>
+  <p>
+    所以我不做泛化的万能聊天框，而是把具体业务流程拆成可执行的输入输出、确定性规则前置、模型辅助判断与人工兜底边界，把整条链路做到<strong
       >能跑、能测、出错能兜</strong
-    >。
+    >。三个代表项目各自侧重其中一条：换一个更强的底层模型进来，应用层要改多少行代码——改得越少，越说明这些护栏沉淀成了工程资产，而不是附着在单次调用上的临时补丁。
   </p>
-  <p>
-    衡量系统设计厚度的标准很简单：换一个更强的底层模型进来，应用层要改多少行代码。改得越少，越说明状态账本、写入门禁、来源回溯与评测闭环沉淀成了真正的工程资产，而不是附着在单次调用上的临时补丁。
-  </p>
+
+  <div class='not-prose my-5 grid gap-3 sm:grid-cols-3'>
+    <div class='rounded-xl border border-border bg-card p-4'>
+      <p class='text-sm font-medium text-card-foreground'>最小权限</p>
+      <p class='mt-2 text-xs leading-5 text-muted-foreground'>
+        Agent 能写哪里、能读什么，由路径守卫与授权目录决定，不靠提示词自觉。Ark 知识工作台的 raw/
+        目录只读、工具按目录授权，就是这条。
+      </p>
+    </div>
+    <div class='rounded-xl border border-border bg-card p-4'>
+      <p class='text-sm font-medium text-card-foreground'>确定性前置</p>
+      <p class='mt-2 text-xs leading-5 text-muted-foreground'>
+        能用代码判断的，绝不花 Token 问模型。英语内容生产工作台先用跨字段规则打回初稿，模型只判它真正擅长的部分。
+      </p>
+    </div>
+    <div class='rounded-xl border border-border bg-card p-4'>
+      <p class='text-sm font-medium text-card-foreground'>可追溯与可回滚</p>
+      <p class='mt-2 text-xs leading-5 text-muted-foreground'>
+        外部副作用必须留确认点，每次写入留一条可撤销快照。企业财务审核 Agent
+        把机器建议、人工复核与审批状态分账记录，分歧一律交人。
+      </p>
+    </div>
+  </div>
 
   <h2 id='capabilities'>能力栈与独立交付边界</h2>
   <p>
@@ -109,7 +136,8 @@ const headings = [
       产品设计 · 已交付）：面向制造企业报销审核（M2）、发票稽核（M3）、银行对账（M4）三条链路，串联
       11 类规则初审、本地 OCR 取证与受控调查，将任务执行、人工复核 Gate 与 ERP 审批三态分离；32
       条合成困难集结论准确率与违规一致率达 1.0000，50 条制度标注集混合检索 <strong>Recall@8</strong>
-      达 1.00。配套提供无需登录的<a href='/projects/finance-review-agent/demo/'>在线交互 Demo</a
+      达 1.00。获<strong>观猹 FDE 共学营前五优秀作品</strong>。配套提供无需登录的<a
+        href='/projects/finance-review-agent/demo/'>在线交互 Demo</a
       >、<a href='/diagrams/qiheng-architecture.html' target='_blank' rel='noopener noreferrer'
         >可交互系统架构图</a
       >与<a

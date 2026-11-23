@@ -39,6 +39,13 @@ describe('section metadata', () => {
       )
     }
   })
+
+  test('about copy states the security-to-controlled-agent signature', () => {
+    const description = sectionMetadata('/about')?.description ?? ''
+    for (const keyword of ['网络空间安全', '最小权限', '确定性', '可追溯', '回滚']) {
+      expect(description).toContain(keyword)
+    }
+  })
 })
 
 describe('draft publication policy', () => {
