@@ -49,7 +49,8 @@ describe('sitemap lastmod', () => {
       '/product/tags',
       '/product/tags/产品',
       '/product/tags/%E4%BA%A7%E5%93%81',
-      '/search'
+      '/search',
+      '/projects/ark-workbench/demo'
     ]
     for (const pathname of undated) expect(sitemapLastModified(pathname)).toBeUndefined()
   })
