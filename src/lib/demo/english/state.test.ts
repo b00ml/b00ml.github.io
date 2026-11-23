@@ -3,30 +3,51 @@ import { describe, expect, test } from 'bun:test'
 import {
   ACTION_NAMES,
   anchorLabel,
+  BAD_CASES,
+  BINARY_RUBRIC_DIMENSIONS,
+  BINARY_RUBRIC_ITEMS,
+  BINARY_VERDICTS,
+  CALIBRATION_SET_SIZE,
   createDemoState,
+  currentRubricCalibration,
   demoContract,
   demoPreset,
   estimateCost,
+  evaluateBinaryRubrics,
   FALSE_PASS_TARGET,
   gateRail,
+  GENERATOR_MODEL,
+  HUMAN_AI_THRESHOLD,
+  IAA_THRESHOLD,
   isFinished,
+  JUDGE_ENGINEERING_SPECS,
+  JUDGE_MODEL,
+  LANGGRAPH_NODE_SPECS,
+  langGraphNodes,
   MAX_REVISION_ROUNDS,
   PRESET_IDS,
+  PROJECT_NAME,
   QUALITY_THRESHOLD,
   reduceDemo,
+  REGRESSION_BASE_COUNT,
+  regressionSuiteStats,
   REVIEW_TARGET,
   roundCards,
-  RUBRIC_WEIGHTS,
+  RUBRIC_CALIBRATION_VERSIONS,
+  selectedNodeSpan,
   traceRows,
-  type DemoPreset,
+  WORKBENCH_NAME,
+  WORKSPACE_VIEWS,
   type DemoAction,
+  type DemoPreset,
   type EnglishDemoState,
   type GateStage,
-  type RoundRecord
+  type RoundRecord,
+  type RubricVerdictMap
 } from './state'
 
-/** A scripted round with only the fields a test cares about spelled out. */
-function round(
+/** 构造测试专用轮次记录，覆盖边界分支（如改版轮次耗尽与关键项一票否决）。 */
+function scriptedRound(
   index: number,
   stage: GateStage,
   passed: boolean,
@@ -34,19 +55,33 @@ function round(
   tokensUsed: number,
   extra: Partial<RoundRecord> = {}
 ): RoundRecord {
-  const breakdown = score === null ? null : { accuracy: score, uniqueness: score, distractors: score }
   return {
     round: index,
     stage,
     passed,
     ruleErrors: [],
     judgeScore: score,
-    judgeBreakdown: breakdown,
+    judgeBreakdown:
+      score === null
+        ? null
+        : { alignment: score, uniqueness: score, distractors: score, grounding: score },
+    rubricVerdicts:
+      score === null ? null : { R1: '1', R2: '1', R3: '0', R4: '1', R5: '1', R6: 'unknown' },
+    rubricNotes: null,
+    criticalZeroIds: [],
+    evidenceQuote: score === null ? null : 'chunk-evidence',
     draftStem: `draft-${index}`,
+    draftOptions: [
+      { key: 'A', text: 'opt-a' },
+      { key: 'B', text: 'opt-b' },
+      { key: 'C', text: 'opt-c' },
+      { key: 'D', text: 'opt-d' }
+    ],
     sourceAnchor: { page: 10 + index, chunkId: `c${index}`, excerpt: `chunk-${index}` },
     tokensUsed,
     trace: {
-      model: score === null ? '规则引擎 · Pydantic 二次校验' : 'judge-model',
+      model: score === null ? 'Pydantic v2 + YAML 硬规则引擎' : JUDGE_MODEL,
+      temperature: score === null ? null : 0.0,
       tokensIn: tokensUsed === 0 ? 0 : Math.round(tokensUsed * 0.8),
       tokensOut: tokensUsed === 0 ? 0 : tokensUsed - Math.round(tokensUsed * 0.8),
       latencyMs: tokensUsed === 0 ? 8 : 4200
@@ -55,13 +90,9 @@ function round(
   }
 }
 
-/**
- * Drive one preset the way the shipped page does: click the preset tab, then
- * keep pressing the gate button (or the human decision the preset ends on).
- */
 function driveToEnd(preset: DemoPreset | string): { state: EnglishDemoState; clicks: number } {
   let state = createDemoState(preset as DemoPreset)
-  let clicks = 1 // selecting the preset is the first click
+  let clicks = 1
   for (let step = 0; step < 15 && !isFinished(state); step += 1) {
     const before = state
     state =
@@ -77,411 +108,351 @@ function driveToEnd(preset: DemoPreset | string): { state: EnglishDemoState; cli
   return { state, clicks }
 }
 
-describe('three-gate demo presets', () => {
-  test('ships exactly three switchable presets, one per question type', () => {
-    expect(PRESET_IDS).toHaveLength(3)
-    const types = PRESET_IDS.map((id) => demoPreset(id).questionType)
-    expect(types).toEqual(['cloze', 'reading', 'mcq'])
+describe('project identity, views and presets', () => {
+  test('uses the canonical project and workbench titles and three workspace views', () => {
+    expect(PROJECT_NAME).toBe('英语教研内容生产工作台')
+    expect(WORKBENCH_NAME).toBe('英语教研内容生产工作台 · LangGraph 观测与评测闭环台')
+    expect(WORKSPACE_VIEWS.map((v) => v.id)).toEqual(['pipeline', 'calibration', 'flywheel'])
   })
 
-  test('every preset starts in the first gate with nothing revealed and nothing banked', () => {
+  test('ships three switchable presets, one per question type, each finishing in <= 5 clicks', () => {
+    expect(PRESET_IDS).toHaveLength(3)
+    expect(PRESET_IDS.map((id) => demoPreset(id).questionType)).toEqual(['cloze', 'reading', 'mcq'])
+
     for (const id of PRESET_IDS) {
       const preset = demoPreset(id)
-      const state = createDemoState(id)
-      expect(state.rounds).toEqual([])
-      expect(state.stage).toBe(preset.rounds[0].stage as GateStage)
-      expect(state.humanDecision).toBe('pending')
-      expect(state.inSampleBank).toBe(false)
-      expect(state.activeAnchor).toBeNull()
-      expect(state.traceOpen).toBe(false)
-      expect(state.ledger.thresholdMet).toBe(false)
-    }
-  })
+      const initial = createDemoState(id)
+      expect(initial.activeView).toBe('pipeline')
+      expect(initial.rounds).toEqual([])
+      expect(initial.stage).toBe(preset.rounds[0].stage)
+      expect(initial.humanDecision).toBe('pending')
+      expect(initial.inSampleBank).toBe(false)
+      expect(initial.activeAnchor).toBeNull()
+      expect(initial.ledger.thresholdMet).toBe(false)
 
-  test('every preset reaches its end state in five clicks or fewer', () => {
-    for (const id of PRESET_IDS) {
       const { state, clicks } = driveToEnd(id)
       expect(isFinished(state)).toBe(true)
       expect(clicks).toBeLessThanOrEqual(5)
     }
   })
+})
 
-  test('only a scripted round nobody can skip keeps the demo honest about round order', () => {
+describe('Pillar A · LangGraph 7-node Trace pipeline and Span inspection', () => {
+  test('renders the 7 canonical LangGraph nodes in exact execution order', () => {
+    expect(LANGGRAPH_NODE_SPECS.map((n) => n.id)).toEqual([
+      'retrieve_chunks',
+      'generate_draft',
+      'schema_rule_guard',
+      'binary_rubric_judge',
+      'revise_draft',
+      'human_interrupt',
+      'sample_or_badcase'
+    ])
+  })
+
+  test('allows inspecting executed node Spans and ignores unexecuted pending nodes', () => {
+    let state = createDemoState('cloze-rule-block')
+    const initialNodes = langGraphNodes(state)
+    expect(initialNodes[0].executed).toBe(true) // retrieve_chunks
+    expect(initialNodes[1].executed).toBe(true) // generate_draft
+    expect(initialNodes[2].executed).toBe(false) // schema_rule_guard pending
+
+    // Selecting pending node is a no-op
+    expect(reduceDemo(state, { type: 'selectNode', nodeId: 'human_interrupt' })).toBe(state)
+
+    // Selecting retrieve_chunks updates selectedNodeSpan
+    state = reduceDemo(state, { type: 'selectNode', nodeId: 'retrieve_chunks' })
+    expect(state.selectedNodeId).toBe('retrieve_chunks')
+    expect(selectedNodeSpan(state).span.spanId).toContain('span-01-retrieve')
+
+    // Running Gate 1 (hard rule block) marks schema_rule_guard blocked and short-circuits judge
+    state = reduceDemo(state, { type: 'runGate' })
+    const afterBlock = langGraphNodes(state)
+    const ruleNode = afterBlock.find((n) => n.id === 'schema_rule_guard')!
+    const judgeNode = afterBlock.find((n) => n.id === 'binary_rubric_judge')!
+    expect(ruleNode.status).toBe('blocked')
+    expect(ruleNode.span.promptTokens).toBe(0)
+    expect(ruleNode.span.completionTokens).toBe(0)
+    expect(judgeNode.status).toBe('short-circuited')
+    expect(judgeNode.executed).toBe(true)
+    expect(judgeNode.span.promptTokens).toBe(0)
+
+    // Running Gate 2 (revised draft clears Judge) pauses at human_interrupt
+    state = reduceDemo(state, { type: 'runGate' })
+    const atInterrupt = langGraphNodes(state)
+    const interruptNode = atInterrupt.find((n) => n.id === 'human_interrupt')!
+    expect(interruptNode.status).toBe('interrupted')
+    expect(interruptNode.executed).toBe(true)
+    expect(interruptNode.span.checkpointStatus).toContain('INTERRUPTED')
+  })
+})
+
+describe('Pillar B · Judge engineering setup and 0-token rule short-circuit', () => {
+  test('decouples generator and judge models and enforces temperature = 0.0 + Evidence-First', () => {
+    expect(GENERATOR_MODEL).not.toBe(JUDGE_MODEL)
+    expect(JUDGE_ENGINEERING_SPECS).toHaveLength(4)
+
     for (const id of PRESET_IDS) {
-      const preset = demoPreset(id)
-      preset.rounds.forEach((entry, index) => {
-        expect(entry.round).toBe(index + 1)
-        // A rule round that passes is still a rule round: it must not have been
-        // scored by the model, and a judge round must never come before it.
-        if (entry.stage === 'schema-rule') expect(entry.judgeScore).toBeNull()
-        if (entry.stage === 'llm-judge') expect(entry.ruleErrors).toEqual([])
+      for (const entry of demoPreset(id).rounds) {
+        if (entry.stage === 'schema-rule') {
+          expect(entry.judgeScore).toBeNull()
+          expect(entry.rubricVerdicts).toBeNull()
+          expect(entry.evidenceQuote).toBeNull()
+          expect(entry.tokensUsed).toBe(0)
+          expect(entry.trace.tokensIn).toBe(0)
+          expect(entry.trace.tokensOut).toBe(0)
+          expect(estimateCost(entry.tokensUsed)).toBe(0)
+        } else {
+          expect(entry.trace.model).toBe(JUDGE_MODEL)
+          expect(entry.trace.temperature).toBe(0.0)
+          expect(entry.evidenceQuote).toBeTruthy()
+          expect(entry.trace.tokensIn + entry.trace.tokensOut).toBe(entry.tokensUsed)
+        }
+      }
+    }
+  })
+})
+
+describe('Pillar C & D · 4 dimensions × 6 Binary Rubrics (1 / 0 / unknown)', () => {
+  test('drills down into 4 dimensions and 6 binary items summing to 100 points', () => {
+    expect(BINARY_VERDICTS).toEqual(['1', '0', 'unknown'])
+    expect(BINARY_RUBRIC_DIMENSIONS).toHaveLength(4)
+    expect(BINARY_RUBRIC_ITEMS).toHaveLength(6)
+    const totalWeight = BINARY_RUBRIC_ITEMS.reduce((sum, item) => sum + item.weight, 0)
+    expect(totalWeight).toBe(100)
+
+    for (const dim of BINARY_RUBRIC_DIMENSIONS) {
+      const subSum = BINARY_RUBRIC_ITEMS.filter((i) => i.dimensionId === dim.id).reduce(
+        (sum, i) => sum + i.weight,
+        0
+      )
+      expect(subSum).toBe(dim.totalWeight)
+    }
+  })
+
+  test('computes composite readiness score from 1/0/unknown and blocks critical 0s even above 70', () => {
+    const allPass = evaluateBinaryRubrics({
+      R1: '1',
+      R2: '1',
+      R3: '1',
+      R4: '1',
+      R5: '1',
+      R6: '1'
+    })
+    expect(allPass.score).toBe(100)
+    expect(allPass.passed).toBe(true)
+    expect(allPass.criticalZeroIds).toEqual([])
+
+    // R5 (grounding, weight 16, critical: true) is '0', all others '1' -> score 84 >= 70, MUST STILL FAIL!
+    const hallucinatedCitation = evaluateBinaryRubrics({
+      R1: '1',
+      R2: '1',
+      R3: '1',
+      R4: '1',
+      R5: '0',
+      R6: '1'
+    })
+    expect(hallucinatedCitation.score).toBe(84)
+    expect(hallucinatedCitation.score).toBeGreaterThanOrEqual(QUALITY_THRESHOLD)
+    expect(hallucinatedCitation.criticalZeroIds).toEqual(['R5'])
+    expect(hallucinatedCitation.passed).toBe(false)
+
+    // Invalid scale values (like fuzzy '3' or '4') are rejected
+    expect(() =>
+      evaluateBinaryRubrics({
+        R1: '4' as unknown as '1',
+        R2: '1',
+        R3: '1',
+        R4: '1',
+        R5: '1',
+        R6: '1'
       })
-    }
-  })
-})
-
-describe('gate 1 · deterministic rules run before the model', () => {
-  test('a round stopped by cross-field rules carries no judge score and spends zero judge tokens', () => {
-    for (const id of PRESET_IDS) {
-      for (const entry of demoPreset(id).rounds) {
-        if (entry.stage !== 'schema-rule' || entry.passed) continue
-        expect(entry.ruleErrors.length).toBeGreaterThan(0)
-        expect(entry.judgeScore).toBeNull()
-        expect(entry.judgeBreakdown).toBeNull()
-        expect(entry.tokensUsed).toBe(0)
-        expect(entry.trace.tokensIn).toBe(0)
-        expect(entry.trace.tokensOut).toBe(0)
-      }
-    }
-
-    const blocked = reduceDemo(createDemoState('cloze-rule-block'), { type: 'runGate' })
-    expect(blocked.rounds).toHaveLength(1)
-    const first = blocked.rounds[0]
-    expect(first.stage).toBe('schema-rule')
-    expect(first.passed).toBe(false)
-    expect(first.judgeScore).toBeNull()
-    expect(first.tokensUsed).toBe(0)
-    expect(first.ruleErrors.join()).toMatch(/空位|重复/)
-    // The rules failed, so the corrected draft is what the next click runs.
-    expect(blocked.stage).toBe('llm-judge')
-    expect(roundCards(blocked)[0].revisionDelta).toBeNull()
+    ).toThrow(/invalid binary verdict/)
   })
 
-  test('token accounting is the sum of the trace, and rules-only rounds cost nothing', () => {
-    // Unit price from the platform's own config (COST_PER_1K_TOKENS = 0.002).
-    expect(estimateCost(2000)).toBe(0.004)
-    expect(estimateCost(0)).toBe(0)
-
-    for (const id of PRESET_IDS) {
-      const { state } = driveToEnd(id)
-      for (const entry of state.rounds) {
-        expect(entry.trace.tokensIn + entry.trace.tokensOut).toBe(entry.tokensUsed)
-        if (entry.stage === 'schema-rule') expect(estimateCost(entry.tokensUsed)).toBe(0)
-      }
-    }
-  })
-})
-
-describe('gate 2 · the judge score is a weighted rubric and below-70 auto-revises', () => {
-  test('every judge score equals its weighted sub-scores, rounded', () => {
-    const weights = { accuracy: 0.4, uniqueness: 0.3, distractors: 0.3 }
-    expect(RUBRIC_WEIGHTS).toEqual(weights)
-    for (const id of PRESET_IDS) {
-      for (const entry of demoPreset(id).rounds) {
-        if (entry.judgeScore === null || entry.judgeBreakdown === null) continue
-        const weighted =
-          entry.judgeBreakdown.accuracy * weights.accuracy +
-          entry.judgeBreakdown.uniqueness * weights.uniqueness +
-          entry.judgeBreakdown.distractors * weights.distractors
-        expect(entry.judgeScore).toBe(Math.round(weighted))
-      }
-    }
-  })
-
-  test('a low score auto-advances to a revision round instead of asking a human', () => {
+  test('low binary score auto-revises with diagnostics and caps revisions at 3 rounds', () => {
     let state = createDemoState('reading-low-score')
-    state = reduceDemo(state, { type: 'runGate' }) // rules pass, no score yet
+    state = reduceDemo(state, { type: 'runGate' }) // Round 1 rule pass
     expect(state.rounds[0].judgeScore).toBeNull()
     expect(state.stage).toBe('llm-judge')
 
-    state = reduceDemo(state, { type: 'runGate' }) // judge 64
-    expect(state.rounds[1].judgeScore).toBe(64)
+    state = reduceDemo(state, { type: 'runGate' }) // Round 2 judge 62 (R2=unknown, R3=0)
+    expect(state.rounds[1].judgeScore).toBe(62)
+    expect(state.rounds[1].rubricVerdicts?.R2).toBe('unknown')
+    expect(state.rounds[1].rubricVerdicts?.R3).toBe('0')
     expect(state.rounds[1].passed).toBe(false)
-    expect(state.stage).toBe('llm-judge') // still revising, not human review
-    // A human decision is impossible before the judge is satisfied.
+    expect(state.stage).toBe('llm-judge')
     expect(reduceDemo(state, { type: 'humanDecide', decision: 'approve' })).toBe(state)
 
-    state = reduceDemo(state, { type: 'runGate' }) // judge 89
-    expect(state.rounds[2].judgeScore).toBe(89)
+    state = reduceDemo(state, { type: 'runGate' }) // Round 3 revised -> 100
+    expect(state.rounds[2].judgeScore).toBe(100)
+    expect(state.rounds[2].passed).toBe(true)
     expect(state.stage).toBe('human-review')
-    expect(state.humanDecision).toBe('pending')
     expect(state.inSampleBank).toBe(false)
-    expect(roundCards(state)[2].revisionDelta).toBe(89 - 64)
-  })
+    expect(roundCards(state)[2].revisionDelta).toBe(38)
 
-  test('a score at or above the threshold stops at human review and never banks itself', () => {
-    const state = reduceDemo(createDemoState('false-pass-calibration'), { type: 'runGate' })
-    const scored = reduceDemo(state, { type: 'runGate' })
-    const last = scored.rounds[scored.rounds.length - 1]
-    expect(last.judgeScore).toBeGreaterThanOrEqual(QUALITY_THRESHOLD)
-    expect(scored.stage).toBe('human-review')
-    expect(scored.humanDecision).toBe('pending')
-    expect(scored.inSampleBank).toBe(false)
-
-    // No amount of re-running the gate banks the question.
-    const rerun = reduceDemo(scored, { type: 'runGate' })
-    expect(rerun.rounds).toHaveLength(scored.rounds.length)
-    expect(rerun.inSampleBank).toBe(false)
-  })
-
-  test('revision rounds are capped, and a case that exhausts them escalates to a human', () => {
-    const failing = demoPreset('reading-low-score')
+    // Revision cap guard
     const endless: DemoPreset = {
-      ...failing,
-      id: 'reading-low-score',
+      ...demoPreset('reading-low-score'),
       endDecision: 'pending',
       rounds: [
-        round(1, 'llm-judge', false, 61, 3000),
-        round(2, 'llm-judge', false, 64, 3100),
-        round(3, 'llm-judge', false, 66, 3200),
-        round(4, 'llm-judge', true, 88, 3300)
+        scriptedRound(1, 'llm-judge', false, 60, 3000),
+        scriptedRound(2, 'llm-judge', false, 62, 3100),
+        scriptedRound(3, 'llm-judge', false, 65, 3200),
+        scriptedRound(4, 'llm-judge', true, 90, 3300)
       ]
     }
-    const { state, clicks } = driveToEnd(endless)
-    expect(clicks).toBe(4)
-    expect(state.rounds).toHaveLength(MAX_REVISION_ROUNDS)
-    expect(state.stage).toBe('human-review')
-    expect(state.exhausted).toBe(true)
-    expect(state.humanDecision).toBe('pending')
-    expect(state.inSampleBank).toBe(false)
-    expect(reduceDemo(state, { type: 'runGate' })).toBe(state)
-
-    // Nothing to bank, so an approve click cannot invent one.
-    expect(reduceDemo(state, { type: 'humanDecide', decision: 'approve' })).toBe(state)
-    const rejected = reduceDemo(state, { type: 'humanDecide', decision: 'reject' })
-    expect(rejected.ledger.totalReviewed).toBe(1)
-    expect(rejected.ledger.falsePassCount).toBe(0)
-    expect(rejected.ledger.thresholdMet).toBe(false)
+    const capped = driveToEnd(endless)
+    expect(capped.state.rounds).toHaveLength(MAX_REVISION_ROUNDS)
+    expect(capped.state.exhausted).toBe(true)
+    expect(capped.state.stage).toBe('human-review')
+    expect(reduceDemo(capped.state, { type: 'humanDecide', decision: 'approve' })).toBe(
+      capped.state
+    )
   })
 })
 
-describe('gate 3 · source anchors', () => {
-  test('clicking the anchor activates exactly one chunk: the current round source', () => {
-    const base = reduceDemo(createDemoState('cloze-rule-block'), { type: 'runGate' })
-    const current = base.rounds[base.rounds.length - 1].sourceAnchor
-    expect(base.activeAnchor).toEqual(current)
+describe('Pillar E · unknown rate root-cause + 85%/90% calibration bench + 20/5 false-pass guard', () => {
+  test('steps R3 calibration from v1 (noisy) -> v2 (IAA met) -> v3 (IAA >=85% & Human-AI >=90% met)', () => {
+    expect(CALIBRATION_SET_SIZE).toBe(40)
+    expect(IAA_THRESHOLD).toBe(85)
+    expect(HUMAN_AI_THRESHOLD).toBe(90)
+    expect(RUBRIC_CALIBRATION_VERSIONS).toHaveLength(3)
 
-    const focused = reduceDemo(base, {
-      type: 'focusAnchor',
-      page: current.page,
-      chunkId: current.chunkId
-    })
-    expect(focused.activeAnchor).toEqual(current)
-    expect(focused.focusTick).toBe(base.focusTick + 1)
+    let state = createDemoState('cloze-rule-block')
+    const v1 = currentRubricCalibration(state)
+    expect(v1.version).toBe('v1')
+    expect(v1.unknownRate).toBe(25.0)
+    expect(v1.iaaRate).toBe(72.5)
+    expect(v1.humanAiRate).toBe(67.5)
+    expect(v1.gateReady).toBe(false)
 
-    // A chunk that is not the current round's anchor cannot steal the highlight.
-    const stale = reduceDemo(base, { type: 'focusAnchor', page: 999, chunkId: 'c9' })
-    expect(stale.activeAnchor).toEqual(current)
-    expect(stale.focusTick).toBe(base.focusTick)
+    state = reduceDemo(state, { type: 'advanceRubricVersion' })
+    const v2 = currentRubricCalibration(state)
+    expect(v2.version).toBe('v2')
+    expect(v2.unknownRate).toBe(10.0)
+    expect(v2.iaaRate).toBe(85.0)
+    expect(v2.iaaRate).toBeGreaterThanOrEqual(IAA_THRESHOLD)
+    expect(v2.humanAiRate).toBe(82.5)
+    expect(v2.humanAiRate).toBeLessThan(HUMAN_AI_THRESHOLD)
+    expect(v2.gateReady).toBe(false)
+
+    state = reduceDemo(state, { type: 'advanceRubricVersion' })
+    const v3 = currentRubricCalibration(state)
+    expect(v3.version).toBe('v3')
+    expect(v3.unknownRate).toBe(2.5)
+    expect(v3.iaaRate).toBe(90.0)
+    expect(v3.humanAiRate).toBe(92.5)
+    expect(v3.cohenKappa).toBe(0.85)
+    expect(v3.gateReady).toBe(true)
+
+    // Advancing past v3 is a safe no-op
+    expect(reduceDemo(state, { type: 'advanceRubricVersion' })).toBe(state)
   })
 
-  test('every anchor resolves to a textbook chunk the page can scroll to', () => {
+  test('enforces the 20-reviewed AND 5-false-pass cold-start guard on single-question review', () => {
+    let state = createDemoState('false-pass-calibration')
+    state = reduceDemo(state, { type: 'runGate' })
+    state = reduceDemo(state, { type: 'runGate' })
+    expect(state.rounds[1].judgeScore).toBe(89)
+    expect(state.ledger).toEqual({ totalReviewed: 18, falsePassCount: 4, thresholdMet: false })
+
+    // Human rejects the 89-point dual-solution question -> 19 reviewed, 5 false passes (still false!)
+    state = reduceDemo(state, { type: 'humanDecide', decision: 'reject' })
+    expect(state.humanDecision).toBe('rejected')
+    expect(state.inSampleBank).toBe(false)
+    expect(state.ledger).toEqual({ totalReviewed: 19, falsePassCount: 5, thresholdMet: false })
+
+    // Recording the 20th reviewed sample crosses both 20 and 5 thresholds -> thresholdMet: true
+    state = reduceDemo(state, { type: 'recordExtraReview' })
+    expect(state.ledger).toEqual({ totalReviewed: 20, falsePassCount: 5, thresholdMet: true })
+    expect(REVIEW_TARGET).toBe(20)
+    expect(FALSE_PASS_TARGET).toBe(5)
+  })
+})
+
+describe('Pillar F · Bad Case attribution matrix and golden regression suite flywheel', () => {
+  test('attributes Bad Cases across rule, RAG, Judge rubric, and prompt layers and increments suite count', () => {
+    expect(BAD_CASES.map((b) => b.id)).toEqual(['BC-01', 'BC-02', 'BC-03', 'BC-04'])
+    let state = createDemoState('cloze-rule-block')
+    expect(regressionSuiteStats(state).totalCount).toBe(REGRESSION_BASE_COUNT)
+    expect(regressionSuiteStats(state).addedCount).toBe(0)
+
+    state = reduceDemo(state, { type: 'selectBadCase', badCaseId: 'BC-02' })
+    expect(state.selectedBadCaseId).toBe('BC-02')
+
+    state = reduceDemo(state, { type: 'resolveBadCase', badCaseId: 'BC-02' })
+    expect(regressionSuiteStats(state).addedCount).toBe(1)
+    expect(regressionSuiteStats(state).totalCount).toBe(REGRESSION_BASE_COUNT + 1)
+
+    // Idempotent: resolving the same Bad Case twice never double-counts
+    expect(reduceDemo(state, { type: 'resolveBadCase', badCaseId: 'BC-02' })).toBe(state)
+
+    state = reduceDemo(state, { type: 'resolveBadCase', badCaseId: 'BC-03' })
+    expect(regressionSuiteStats(state).totalCount).toBe(REGRESSION_BASE_COUNT + 2)
+  })
+})
+
+describe('source anchors, view switching, reset and contract', () => {
+  test('every round anchor resolves to an authentic textbook chunk and focusAnchor validates it', () => {
     for (const id of PRESET_IDS) {
       const preset = demoPreset(id)
       const { state } = driveToEnd(id)
       for (const entry of state.rounds) {
         const chunk = preset.chunks.find(
-          (item) => item.page === entry.sourceAnchor.page && item.chunkId === entry.sourceAnchor.chunkId
+          (item) =>
+            item.page === entry.sourceAnchor.page && item.chunkId === entry.sourceAnchor.chunkId
         )
         expect(chunk).toBeDefined()
         expect(anchorLabel(preset, entry.sourceAnchor)).toBe(chunk!.label)
         expect(chunk!.body.includes(entry.sourceAnchor.excerpt.slice(0, 12))).toBe(true)
       }
     }
-  })
-})
 
-describe('gate 3 · human review and false-pass calibration', () => {
-  test('approving a scored question moves it into the sample bank and labels one sample', () => {
-    const scored = reduceDemo(
-      reduceDemo(createDemoState('false-pass-calibration'), { type: 'runGate' }),
-      { type: 'runGate' }
-    )
-    const approved = reduceDemo(scored, { type: 'humanDecide', decision: 'approve' })
-    expect(approved.humanDecision).toBe('approved')
-    expect(approved.inSampleBank).toBe(true)
-    expect(approved.ledger.totalReviewed).toBe(scored.ledger.totalReviewed + 1)
-    expect(approved.ledger.falsePassCount).toBe(scored.ledger.falsePassCount)
-  })
-
-  test('rejecting a high score counts a false pass and keeps calibration inactive early', () => {
-    const scored = reduceDemo(
-      reduceDemo(createDemoState('false-pass-calibration'), { type: 'runGate' }),
-      { type: 'runGate' }
-    )
-    expect(scored.ledger).toEqual({ totalReviewed: 18, falsePassCount: 4, thresholdMet: false })
-    const rejected = reduceDemo(scored, { type: 'humanDecide', decision: 'reject' })
-    expect(rejected.humanDecision).toBe('rejected')
-    expect(rejected.inSampleBank).toBe(false)
-    expect(rejected.ledger.totalReviewed).toBe(19)
-    expect(rejected.ledger.falsePassCount).toBe(5)
-    // 5 false passes are there, the reviewed count is not: both are required.
-    expect(rejected.ledger.thresholdMet).toBe(false)
-  })
-
-  test('calibration activates only when both thresholds are met', () => {
-    const preset = demoPreset('false-pass-calibration')
-    const at = (totalReviewed: number, falsePassCount: number) => {
-      const scored = reduceDemo(
-        reduceDemo(createDemoState({ ...preset, ledgerSeed: { totalReviewed, falsePassCount } }), {
-          type: 'runGate'
-        }),
-        { type: 'runGate' }
-      )
-      return reduceDemo(scored, { type: 'humanDecide', decision: 'reject' })
-    }
-    expect(at(19, 4).ledger).toEqual({
-      totalReviewed: 20,
-      falsePassCount: 5,
-      thresholdMet: true
+    const ran = reduceDemo(createDemoState('cloze-rule-block'), { type: 'runGate' })
+    const anchor = ran.rounds[0].sourceAnchor
+    const focused = reduceDemo(ran, {
+      type: 'focusAnchor',
+      page: anchor.page,
+      chunkId: anchor.chunkId
     })
-    expect(at(18, 4).ledger).toEqual({
-      totalReviewed: 19,
-      falsePassCount: 5,
-      thresholdMet: false
-    })
-    expect(at(19, 3).ledger).toEqual({
-      totalReviewed: 20,
-      falsePassCount: 4,
-      thresholdMet: false
-    })
-    expect(REVIEW_TARGET).toBe(20)
-    expect(FALSE_PASS_TARGET).toBe(5)
+    expect(focused.focusTick).toBe(ran.focusTick + 1)
+    expect(reduceDemo(ran, { type: 'focusAnchor', page: 999, chunkId: 'nope' })).toBe(ran)
   })
 
-  test('a human decision is only possible at the human review gate, once', () => {
-    const fresh = createDemoState('false-pass-calibration')
-    expect(reduceDemo(fresh, { type: 'humanDecide', decision: 'reject' })).toBe(fresh)
-
-    const scored = reduceDemo(reduceDemo(fresh, { type: 'runGate' }), { type: 'runGate' })
-    const rejected = reduceDemo(scored, { type: 'humanDecide', decision: 'reject' })
-    expect(reduceDemo(rejected, { type: 'humanDecide', decision: 'approve' })).toBe(rejected)
-  })
-
-  test('no action other than an explicit approve ever banks a question', () => {
-    for (const id of PRESET_IDS) {
-      let state = createDemoState(id)
-      const actions: DemoAction[] = [
-        { type: 'runGate' },
-        { type: 'runGate' },
-        { type: 'runGate' },
-        { type: 'toggleTrace' },
-        { type: 'focusAnchor', page: 42, chunkId: 'p42-c3' },
-        { type: 'humanDecide', decision: 'reject' }
-      ]
-      for (const action of actions) {
-        state = reduceDemo(state, action)
-        expect(state.inSampleBank).toBe(false)
-      }
-    }
-  })
-})
-
-describe('reset and preset switching', () => {
-  test('reset restores the initial preset exactly, ledger included', () => {
-    for (const id of PRESET_IDS) {
-      const initial = createDemoState(id)
-      let state = reduceDemo(initial, { type: 'runGate' })
-      state = reduceDemo(state, { type: 'runGate' })
-      state = reduceDemo(state, { type: 'runGate' })
-      state = reduceDemo(state, { type: 'humanDecide', decision: 'reject' })
-      state = reduceDemo(state, { type: 'toggleTrace' })
-      state = reduceDemo(state, { type: 'focusAnchor', page: 42, chunkId: 'p42-c3' })
-      expect(state).not.toEqual(initial)
-      expect(reduceDemo(state, { type: 'reset' })).toEqual(initial)
-    }
-  })
-
-  test('switching presets swaps the question and the ledger seed', () => {
-    const cloze = createDemoState('cloze-rule-block')
-    const reading = reduceDemo(cloze, { type: 'selectPreset', presetId: 'reading-low-score' })
-    expect(reading).toEqual(createDemoState('reading-low-score'))
-    expect(reading.preset.questionType).toBe('reading')
-    expect(reading.ledger).toEqual({ totalReviewed: 0, falsePassCount: 0, thresholdMet: false })
-
-    const calibration = reduceDemo(reading, { type: 'selectPreset', presetId: 'false-pass-calibration' })
-    expect(calibration.ledger).toEqual({
-      totalReviewed: 18,
-      falsePassCount: 4,
-      thresholdMet: false
-    })
-  })
-
-  test('the trace panel and the gate rail are derived from the same revealed rounds', () => {
-    let state = createDemoState('reading-low-score')
-    expect(state.traceOpen).toBe(false)
+  test('reset restores simulation state cleanly while preserving the active workspace view', () => {
+    const initial = createDemoState('cloze-rule-block')
+    let state = reduceDemo(initial, { type: 'runGate' })
+    state = reduceDemo(state, { type: 'advanceRubricVersion' })
+    state = reduceDemo(state, { type: 'resolveBadCase', badCaseId: 'BC-01' })
     state = reduceDemo(state, { type: 'toggleTrace' })
-    expect(state.traceOpen).toBe(true)
+    expect(reduceDemo(state, { type: 'reset' })).toEqual(initial)
 
-    const empty = gateRail(createDemoState('reading-low-score'))
-    expect(empty.map((step) => step.status)).toEqual(['pending', 'pending', 'pending'])
-
-    state = reduceDemo(state, { type: 'runGate' })
-    state = reduceDemo(state, { type: 'runGate' })
-    const rail = gateRail(state)
-    expect(rail.map((step) => step.stage)).toEqual(['schema-rule', 'llm-judge', 'human-review'])
-    expect(rail.map((step) => step.status)).toEqual(['passed', 'failed', 'pending'])
-    expect(rail[1].round).toBe(2)
-
-    state = reduceDemo(state, { type: 'runGate' })
-    expect(gateRail(state).map((step) => step.status)).toEqual(['passed', 'passed', 'pending'])
-    expect(gateRail(state)[2].round).toBe(3)
-
-    const rows = traceRows(state)
-    expect(rows.map((row) => row.round)).toEqual([1, 2, 3])
-    expect(rows[0].cost).toBe(0)
-    expect(rows[2].cost).toBe(estimateCost(state.rounds[2].tokensUsed))
-    expect(rows[2].cost).toBeGreaterThan(rows[1].cost)
-  })
-})
-
-describe('contract shared with the shipped page', () => {
-  test('an unknown action leaves the state untouched', () => {
-    const state = createDemoState('cloze-rule-block')
-    const unknown = { type: 'nope' } as unknown as DemoAction
-    expect(reduceDemo(state, unknown)).toBe(state)
+    // When on View 2 (calibration), reset keeps View 2 active while resetting data to v1
+    const inCalib = reduceDemo(state, { type: 'switchView', view: 'calibration' })
+    const resetInCalib = reduceDemo(inCalib, { type: 'reset' })
+    expect(resetInCalib.activeView).toBe('calibration')
+    expect(resetInCalib.rubricVersion).toBe('v1')
+    expect(resetInCalib.resolvedBadCaseIds).toEqual([])
   })
 
-  test('lists every action the page dispatches', () => {
-    expect([...ACTION_NAMES]).toEqual([
-      'selectPreset',
-      'runGate',
-      'focusAnchor',
-      'humanDecide',
-      'toggleTrace',
-      'reset'
-    ])
-  })
+  test('gateRail, traceRows, unknown actions and demoContract stay completely consistent', () => {
+    const base = createDemoState('reading-low-score')
+    expect(reduceDemo(base, { type: 'unknown' } as unknown as DemoAction)).toBe(base)
+    expect(gateRail(base).map((g) => g.status)).toEqual(['pending', 'pending', 'pending'])
 
-  test('the derived contract describes the presets this machine actually runs', () => {
     const contract = demoContract()
-    expect(contract.thresholds).toEqual({
-      quality: 70,
-      maxRevisionRounds: 3,
-      reviewedTarget: 20,
-      falsePassTarget: 5,
-      rubric: { accuracy: 0.4, uniqueness: 0.3, distractors: 0.3 }
-    })
-    expect(contract.gates.map((gate) => gate.stage)).toEqual([
-      'schema-rule',
-      'llm-judge',
-      'human-review'
-    ])
+    expect(contract.actions).toEqual([...ACTION_NAMES])
+    expect(contract.nodes).toHaveLength(7)
+    expect(contract.binaryRubrics).toHaveLength(6)
+    expect(contract.calibrationVersions).toHaveLength(3)
+    expect(contract.badCases).toHaveLength(4)
     expect(contract.presets).toHaveLength(3)
 
-    for (const summary of contract.presets) {
-      const preset = demoPreset(summary.id)
-      expect(summary.label).toBe(preset.label)
-      expect(summary.questionType).toBe(preset.questionType)
-      expect(summary.rounds).toEqual(
-        preset.rounds.map((entry) => ({
-          round: entry.round,
-          stage: entry.stage,
-          passed: entry.passed,
-          judgeScore: entry.judgeScore,
-          tokensUsed: entry.tokensUsed,
-          page: entry.sourceAnchor.page,
-          chunkId: entry.sourceAnchor.chunkId
-        }))
-      )
-      expect(summary.clicksToEnd).toBe(driveToEnd(summary.id).clicks)
-      expect(summary.clicksToEnd).toBeLessThanOrEqual(5)
-      expect(summary.ledgerSeed).toEqual({
-        totalReviewed: preset.ledgerSeed.totalReviewed,
-        falsePassCount: preset.ledgerSeed.falsePassCount,
-        thresholdMet: false
-      })
-    }
-    expect(contract.invariants.length).toBeGreaterThanOrEqual(5)
+    const driven = driveToEnd('reading-low-score').state
+    const rows = traceRows(driven)
+    expect(rows).toHaveLength(3)
+    expect(rows[0].cost).toBe(0)
+    expect(rows[2].cost).toBeGreaterThan(rows[1].cost)
   })
 })

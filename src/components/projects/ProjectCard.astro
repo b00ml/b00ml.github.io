@@ -1,5 +1,5 @@
 ---
-import { isExternalProjectLink, type ProjectCardItem } from '@/lib/projects/cards'
+import { isExternalProjectLink, projectLinkKind, type ProjectCardItem } from '@/lib/projects/cards'
 import { STATUS_LABELS } from '@/lib/projects/status'
 
 interface Props {
@@ -66,12 +66,16 @@ const metaLine = [project.period, project.role].filter(Boolean).join(' · ')
       <div class='flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs'>
         {project.links.map((link) => {
           const external = isExternalProjectLink(link.href)
+          const kind = projectLinkKind(link)
           return (
             <a
               href={link.href}
               target={external ? '_blank' : undefined}
               rel={external ? 'noopener noreferrer' : undefined}
-              class='inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-muted hover:text-foreground'
+              class:list={[
+                'proj-action inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-medium transition',
+                `proj-action--${kind}`
+              ]}
             >
               <span>{link.label}</span>
               <span aria-hidden='true'>{external ? '↗' : '→'}</span>
@@ -82,3 +86,80 @@ const metaLine = [project.period, project.role].filter(Boolean).join(' · ')
     )
   }
 </article>
+
+<style>
+  .proj-action--demo {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.08);
+  }
+  .proj-action--demo:hover {
+    background-color: hsl(var(--primary) / 0.88);
+    color: hsl(var(--primary-foreground));
+  }
+
+  .proj-action--product {
+    background-color: hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--primary));
+  }
+  .proj-action--product:hover {
+    background-color: hsl(var(--primary) / 0.18);
+    border-color: hsl(var(--primary) / 0.55);
+    color: hsl(var(--primary));
+  }
+
+  .proj-action--diagram {
+    background-color: hsl(38 88% 46% / 0.1);
+    border-color: hsl(36 80% 42% / 0.34);
+    color: hsl(34 86% 29%);
+  }
+  .proj-action--diagram:hover {
+    background-color: hsl(38 88% 46% / 0.18);
+    border-color: hsl(36 80% 42% / 0.55);
+    color: hsl(34 90% 24%);
+  }
+  :global(.dark) .proj-action--diagram {
+    background-color: hsl(40 92% 64% / 0.12);
+    border-color: hsl(40 92% 64% / 0.35);
+    color: hsl(42 94% 76%);
+  }
+  :global(.dark) .proj-action--diagram:hover {
+    background-color: hsl(40 92% 64% / 0.2);
+    border-color: hsl(40 92% 64% / 0.55);
+    color: hsl(42 96% 84%);
+  }
+
+  .proj-action--repo {
+    background-color: hsl(156 54% 36% / 0.09);
+    border-color: hsl(156 50% 34% / 0.32);
+    color: hsl(158 60% 25%);
+  }
+  .proj-action--repo:hover {
+    background-color: hsl(156 54% 36% / 0.17);
+    border-color: hsl(156 50% 34% / 0.52);
+    color: hsl(158 64% 20%);
+  }
+  :global(.dark) .proj-action--repo {
+    background-color: hsl(152 62% 62% / 0.12);
+    border-color: hsl(152 62% 62% / 0.34);
+    color: hsl(152 68% 76%);
+  }
+  :global(.dark) .proj-action--repo:hover {
+    background-color: hsl(152 62% 62% / 0.2);
+    border-color: hsl(152 62% 62% / 0.54);
+    color: hsl(152 74% 84%);
+  }
+
+  .proj-action--default {
+    background-color: hsl(var(--background));
+    border-color: hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+  }
+  .proj-action--default:hover {
+    background-color: hsl(var(--muted));
+    border-color: hsl(var(--foreground) / 0.2);
+    color: hsl(var(--foreground));
+  }
+</style>

@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ark v2 · 常驻本机的个人知识与多端 Agent 大脑</title>
+<meta name="description" content="Ark v2 产品概念页：Vault 里的 Markdown 是唯一真源，Obsidian、Claude Code、DSH 与手机 QQ 共用同一个本机大脑。免弹窗直写配 Git 快照回滚，外部动作事前确认。">
+<link rel="icon" href="/favicon.svg">
+<script>
+  (function () {
+    var root = document.documentElement
+    var t = null
+    try {
+      var q = new URLSearchParams(location.search).get('theme')
+      if (q === 'light' || q === 'dark') t = q
+    } catch (_) {}
+    if (!t) {
+      try {
+        t = localStorage.getItem('ark-product-theme') || localStorage.getItem('theme')
+      } catch (_) {}
+    }
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    }
+    root.setAttribute('data-theme', t)
+  })()
+</script>
+<style>
+  @font-face {
+    font-family: 'Satoshi';
+    src: url('/fonts/Satoshi-Variable.ttf');
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'Satoshi';
+    src: url('/fonts/Satoshi-VariableItalic.ttf');
+    font-style: italic;
+    font-display: swap;
+  }
+
+  :root {
+    --font-sans: 'Satoshi', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 24px;
+  }
+
+  html[data-theme='light'] {
+    color-scheme: light;
+    --bg: hsl(210 33% 99%);
+    --bg-subtle: hsl(210 24% 96.6%);
+    --surface: hsl(0 0% 100%);
+    --surface-2: hsl(215 20% 97.4%);
+    --border: hsl(220 13% 89%);
+    --border-strong: hsl(215 14% 80%);
+    --ink: hsl(240 10% 6%);
+    --muted: hsl(240 4.5% 34%);
+    --faint: hsl(240 4% 52%);
+    --accent: hsl(200 34% 37%);
+    --accent-fg: hsl(0 0% 99%);
+    --accent-soft: hsl(200 34% 37% / 0.09);
+    --accent-ring: hsl(200 34% 37% / 0.28);
+    --ok: hsl(156 58% 29%);
+    --ok-soft: hsl(156 58% 34% / 0.1);
+    --ok-border: hsl(156 52% 34% / 0.3);
+    --warn: hsl(34 86% 34%);
+    --warn-soft: hsl(38 90% 48% / 0.11);
+    --warn-border: hsl(36 82% 40% / 0.32);
+    --danger: hsl(0 65% 44%);
+    --danger-soft: hsl(0 70% 50% / 0.09);
+    --shadow-lg: 0 1px 2px hsl(220 20% 10% / 0.04), 0 18px 48px -12px hsl(220 25% 12% / 0.09);
+    --shadow-sm: 0 1px 2px hsl(220 20% 10% / 0.05);
+    --nav-bg: hsl(210 33% 99% / 0.84);
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --bg: hsl(235 18% 6.2%);
+    --bg-subtle: hsl(235 16% 8.5%);
+    --surface: hsl(235 15% 10%);
+    --surface-2: hsl(235 14% 13%);
+    --border: hsl(235 10% 18.5%);
+    --border-strong: hsl(235 10% 26%);
+    --ink: hsl(210 20% 96%);
+    --muted: hsl(220 9% 71%);
+    --faint: hsl(220 7% 52%);
+    --accent: hsl(196 92% 80%);
+    --accent-fg: hsl(235 22% 7%);
+    --accent-soft: hsl(196 92% 80% / 0.12);
+    --accent-ring: hsl(196 92% 80% / 0.34);
+    --ok: hsl(152 64% 68%);
+    --ok-soft: hsl(152 64% 60% / 0.12);
+    --ok-border: hsl(152 60% 62% / 0.32);
+    --warn: hsl(40 92% 72%);
+    --warn-soft: hsl(40 92% 64% / 0.13);
+    --warn-border: hsl(40 90% 66% / 0.34);
+    --danger: hsl(0 76% 72%);
+    --danger-soft: hsl(0 72% 62% / 0.13);
+    --shadow-lg: 0 1px 2px hsl(0 0% 0% / 0.45), 0 24px 56px -14px hsl(0 0% 0% / 0.58);
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.35);
+    --nav-bg: hsl(235 18% 6.2% / 0.82);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.68 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+  code, pre, .mono { font-family: var(--font-mono); }
+  button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Top Navigation ── */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 10px 24px;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-ring);
+    color: var(--accent);
+    display: grid;
+    place-items: center;
+  }
+  .brand-ver {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-left: 10px;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+  .nav-links a:hover { color: var(--ink); }
+  .spacer { flex: 1; }
+  .nav-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Buttons & Badges ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: var(--r-sm);
+    font-size: 13.5px;
+    font-weight: 550;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: var(--accent); filter: brightness(1.06); border-color: var(--accent); }
+  .btn-soft {
+    background: var(--accent-soft);
+    border-color: var(--accent-ring);
+    color: var(--accent);
+  }
+  .btn-soft:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .btn-sm { padding: 5px 11px; font-size: 12.5px; }
+
+  .theme-btn {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    display: inline-grid;
+    place-items: center;
+  }
+  .theme-btn:hover { color: var(--ink); border-color: var(--border-strong); }
+  .theme-btn svg {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    transition: opacity 0.24s ease, filter 0.24s ease, transform 0.24s ease;
+  }
+  .theme-btn .sun { opacity: 0; filter: blur(4px); transform: scale(0.65); }
+  .theme-btn .moon { opacity: 1; filter: blur(0); transform: scale(1); }
+  html[data-theme='light'] .theme-btn .sun { opacity: 1; filter: blur(0); transform: scale(1); }
+  html[data-theme='light'] .theme-btn .moon { opacity: 0; filter: blur(4px); transform: scale(0.65); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 550;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .pill.ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok); }
+  .pill.warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn); }
+  .pill.accent { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── Hero ── */
+  .hero { padding: 64px 0 56px; }
+  .eyebrow-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .hero h1 {
+    margin: 0 0 18px;
+    font-size: clamp(2rem, 4.2vw, 3.25rem);
+    line-height: 1.16;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    max-width: 19ch;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .hero-lede {
+    margin: 0 0 26px;
+    max-width: 64ch;
+    font-size: 16.5px;
+    line-height: 1.72;
+    color: var(--muted);
+  }
+  .hero-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .hero-meta {
+    font-size: 12.5px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-bottom: 36px;
+  }
+
+  /* ── Interactive Showcase Window ── */
+  .stage-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+  .stage-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .stab {
+    padding: 14px 18px;
+    text-align: left;
+    border-right: 1px solid var(--border);
+    transition: background 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .stab:last-child { border-right: 0; }
+  .stab:hover { background: var(--surface-2); }
+  .stab[aria-selected='true'] {
+    background: var(--surface);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .stab-num { font-size: 11px; font-weight: 650; color: var(--accent); letter-spacing: 0.05em; }
+  .stab-title { font-size: 14px; font-weight: 650; color: var(--ink); }
+  .stab-sub { font-size: 12px; color: var(--muted); }
+
+  .stage-split {
+    display: grid;
+    grid-template-columns: 1.06fr 0.94fr;
+    min-height: 370px;
+  }
+  .stage-pane { padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .stage-pane + .stage-pane { border-left: 1px solid var(--border); background: var(--surface-2); }
+  .pane-kicker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--faint);
+  }
+  .md-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+    font: 12.5px/1.68 var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--ink);
+    flex: 1;
+  }
+  .md-fm { color: var(--faint); }
+  .md-add {
+    display: block;
+    background: var(--ok-soft);
+    color: var(--ok);
+    padding: 1px 6px;
+    margin: 2px -6px;
+    border-radius: 4px;
+  }
+  .md-link { color: var(--accent); font-weight: 600; }
+
+  .event-list { display: flex; flex-direction: column; gap: 10px; }
+  .event-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .event-card.confirm { border-color: var(--warn-border); background: var(--warn-soft); }
+  .event-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Chapters ── */
+  .chapter { padding: 72px 0; border-top: 1px solid var(--border); }
+  .sec-kicker {
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .chapter h2 {
+    margin: 0 0 12px;
+    font-size: clamp(1.55rem, 2.8vw, 2.15rem);
+    line-height: 1.24;
+    letter-spacing: -0.02em;
+  }
+  .chapter-lede {
+    margin: 0 0 32px;
+    max-width: 64ch;
+    color: var(--muted);
+    font-size: 15.5px;
+  }
+
+  /* ── Chapter 1: Multi-Host Brain ── */
+  .host-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .host-btn {
+    padding: 13px 14px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.16s ease, background 0.16s ease;
+  }
+  .host-btn:hover { border-color: var(--border-strong); }
+  .host-btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .host-name { font-weight: 650; font-size: 14px; }
+  .host-proto { font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); }
+
+  .host-inspector {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 20px 22px;
+  }
+  .budget-meter { display: flex; flex-direction: column; gap: 12px; }
+  .bar-track {
+    height: 9px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .bar-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.25s ease; }
+  .bar-fill.ok { background: var(--ok); }
+
+  /* ── Chapter 2: Collect & V7 Tasks Multi-View ── */
+  .view-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 18px;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border);
+  }
+  .seg-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .seg {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 550;
+    color: var(--muted);
+  }
+  .seg[aria-selected='true'] {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .view-body { padding: 20px 22px; }
+
+  .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; }
+  .tchip {
+    padding: 3px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .tchip.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .kcol {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .kcol-head { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+  .kcard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .kcard-tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
+  .ktag { padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+
+  .insight-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; }
+  .heat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .heat-cell {
+    padding: 9px 10px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .heat-cell.lv1 { background: var(--accent-soft); border-color: var(--accent-ring); }
+  .heat-cell.lv2 { background: var(--ok-soft); border-color: var(--ok-border); font-weight: 600; }
+  .flow-rows { display: flex; flex-direction: column; gap: 9px; }
+  .flow-row {
+    display: grid;
+    grid-template-columns: 62px 1fr 78px;
+    align-items: center;
+    gap: 10px;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .flow-row:hover strong { color: var(--accent); }
+
+  /* ── Chapter 3: Bento Grid ── */
+  .bento { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; }
+  .bento-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .bento-card h3 { margin: 0; font-size: 18px; line-height: 1.35; }
+  .bento-card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .mem-item {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 11px 13px;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rule-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .rule-list li {
+    padding: 10px 12px;
+    border-radius: var(--r-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  .rule-list strong { color: var(--ink); }
+
+  /* ── Chapter 4: Quickstart & Comparison Footer ── */
+  .steps-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .step-btn {
+    padding: 12px 13px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-align: left;
+  }
+  .step-btn[aria-selected='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .term-box {
+    background: hsl(235 20% 8%);
+    color: hsl(210 20% 94%);
+    border: 1px solid hsl(235 12% 20%);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .term-box pre { margin: 0; font: 13px/1.7 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
+  .copy-btn {
+    padding: 5px 11px;
+    border-radius: 6px;
+    border: 1px solid hsl(235 12% 28%);
+    background: hsl(235 14% 14%);
+    color: hsl(210 20% 92%);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { border-color: hsl(196 92% 80%); }
+
+  .compare-banner {
+    margin: 56px 0 72px;
+    padding: 26px 28px;
+    border-radius: var(--r-xl);
+    border: 1px solid var(--accent-ring);
+    background: var(--accent-soft);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+  }
+  .compare-banner h3 { margin: 0 0 4px; font-size: 18px; }
+  .compare-banner p { margin: 0; color: var(--muted); font-size: 14px; max-width: 58ch; }
+
+  @media (max-width: 960px) {
+    .nav-links { display: none; }
+    .stage-tabs, .stage-split, .host-inspector, .kanban, .insight-grid, .bento {
+      grid-template-columns: 1fr;
+    }
+    .stab { border-right: 0; border-bottom: 1px solid var(--border); }
+    .stage-pane + .stage-pane { border-left: 0; border-top: 1px solid var(--border); }
+    .host-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .steps-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 560px) {
+    .wrap, .nav-inner { padding-left: 16px; padding-right: 16px; }
+    .hero { padding: 38px 0 40px; }
+    .chapter { padding: 48px 0; }
+    .host-grid, .steps-grid { grid-template-columns: 1fr; }
+    .heat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L3 8l9 5 9-5-9-5z"/><path d="M3 16l9 5 9-5"/><path d="M3 12l9 5 9-5"/></svg>
+        </span>
+        <span>Ark</span>
+        <span class="brand-ver">v2 产品概念页</span>
+      </a>
+
+      <nav class="nav-links" aria-label="页面章节">
+        <a href="#scenes">核心场景</a>
+        <a href="#hosts">多端大脑</a>
+        <a href="#views">采集与任务</a>
+        <a href="#trust">记忆与边界</a>
+        <a href="#quickstart">5 步启动</a>
+      </nav>
+
+      <span class="spacer"></span>
+
+      <div class="nav-actions">
+        <a class="btn btn-sm btn-soft" href="/projects/ark-workbench/demo/">⚡ 切换看「完整工作台原型」 →</a>
+        <a class="btn btn-sm" href="/projects/ark-workbench">← 项目深读</a>
+        <button class="theme-btn" id="themeToggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="wrap">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="eyebrow-row">
+        <span class="pill ok"><span class="dot"></span>本地优先 · Markdown 唯一真源</span>
+        <span class="pill accent">单进程 ark serve · 标准 MCP 协议</span>
+        <span class="pill">658 项自动化测试守护</span>
+      </div>
+
+      <h1>笔记留在你的电脑里，你用的每个 Agent <em>共用同一个大脑。</em></h1>
+
+      <p class="hero-lede">
+        出门在手机 QQ 随手丢一条视频或文章链接，回到电脑打开 Obsidian、Claude Code 或 DSH，接着上次的假设直接往下想。
+        改笔记不用逐次弹窗点同意——每次操作自动合成一条可撤销的 Git 快照；只有发邮件这类收不回来的外部动作，才停下来等你拍板。
+      </p>
+
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="/projects/ark-workbench/demo/">打开完整交互工作台 →</a>
+        <a class="btn" href="#quickstart">5 步本地启动 ↓</a>
+        <a class="btn" href="/diagrams/ark-architecture.html" target="_blank" rel="noopener noreferrer">查看全渠道架构图 ↗</a>
+      </div>
+
+      <div class="hero-meta">
+        <span>✓ 零私有数据库，索引与缓存删掉可完整重建</span>
+        <span>✓ Obsidian / Claude Code / DSH / 手机 QQ 四端实机验收通过</span>
+        <span>✓ v2 开源发布整理中</span>
+      </div>
+
+      <!-- Interactive 3-Story Stage -->
+      <div id="scenes" class="stage-card" aria-label="Ark 核心场景互动预览">
+        <div class="stage-tabs" role="tablist">
+          <button class="stab" role="tab" aria-selected="true" data-scene="collect">
+            <span class="stab-num">SCENE 01 · 输入</span>
+            <span class="stab-title">手机 QQ 随手丢链接采集</span>
+            <span class="stab-sub">AstrBot 调 /mcp → 字幕转写 → 结构化入库</span>
+          </button>
+          <button class="stab" role="tab" aria-selected="false" data-scene="resume">
+            <span class="stab-num">SCENE 02 · 接续</span>
+            <span class="stab-title">换个 Agent 接着上次往下想</span>
+            <span class="stab-sub">Live State 线程断点 + 乐观锁防覆盖</span>
+          </button>
+          <button class="stab" role="tab" aria-selected="false" data-scene="guard">
+            <span class="stab-num">SCENE 03 · 护栏</span>
+            <span class="stab-title">库内免弹窗直写 vs 外发拦截</span>
+            <span class="stab-sub">Git 单快照一键撤销 · 发邮件必经确认卡</span>
+          </button>
+        </div>
+
+        <div class="stage-split" id="sceneBody"></div>
+      </div>
+    </section>
+
+    <!-- Chapter 1: Multi-Host Ecosystem -->
+    <section id="hosts" class="chapter">
+      <div class="sec-kicker">01 · 多渠道共享大脑</div>
+      <h2>不同步第二份状态，因为根本没有第二份状态。</h2>
+      <p class="chapter-lede">
+        本机只跑一个 <code>ark serve</code> 常驻进程（<code>127.0.0.1:8650</code>），同时暴露 <code>/mcp</code> 与 <code>/v1</code>。
+        连自带的 <code>ark-agent</code> 也只经标准 MCP 客户端调内核——没有任何内部后门。点选下方任意入口查看它的真实接入链路与验收等级：
+      </p>
+
+      <div class="host-grid" id="hostGrid" role="toolbar" aria-label="选择接入渠道"></div>
+      <div class="host-inspector" id="hostInspector"></div>
+    </section>
+
+    <!-- Chapter 2: Collect + V7 Tasks Multi-View -->
+    <section id="views" class="chapter">
+      <div class="sec-kicker">02 · 收集与任务，一份 Markdown 多维透视</div>
+      <h2>不建私有库。关掉插件，你的待办和摘录依然是普通笔记。</h2>
+      <p class="chapter-lede">
+        采集进来的文章视频和每日推进的任务，全部以标准 Markdown + Frontmatter 落在你的 Vault 目录里。
+        在界面上它是顺手的收件箱、多标签看板、月度热力与共现精力流向图；在磁盘上它永远受 Git 快照和全文检索保护。
+      </p>
+
+      <div class="stage-card">
+        <div class="view-bar">
+          <div class="seg-group" role="tablist" aria-label="插件视图切换">
+            <button class="seg" role="tab" aria-selected="true" data-view="tasks-board">📋 Tasks 自由多标签看板（V7）</button>
+            <button class="seg" role="tab" aria-selected="false" data-view="tasks-insight">📊 年度热力与共现流向（V7）</button>
+            <button class="seg" role="tab" aria-selected="false" data-view="collect-box">📥 Collect 跨端采集库</button>
+          </div>
+          <span class="pill">数据源：<code>Ark 工作区/{tasks,collect}/*.md</code> · 现算零额外文件</span>
+        </div>
+        <div class="view-body" id="pluginViewBody"></div>
+      </div>
+    </section>
+
+    <!-- Chapter 3: Memory Isolation & 5 Hard Rules -->
+    <section id="trust" class="chapter">
+      <div class="sec-kicker">03 · 记忆防污染与安全边界</div>
+      <h2>分得清「模型猜的」与「你亲口认的」，也守得住不可逆边界。</h2>
+      <p class="chapter-lede">
+        长期记忆最怕模型把一句随口推测当成你的永久偏好。Ark 在数据结构上把推断与结论彻底分开，并把整套系统收敛进五条不能破的硬约束。
+      </p>
+
+      <div class="bento">
+        <div class="bento-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <h3>记忆防污染闸门（点按可交互）</h3>
+            <span class="pill accent" id="memBudgetPill">常驻层：125 / 2000 tok</span>
+          </div>
+          <p>
+            <code>remember</code> 工具没有直接写 <code>confirmed</code> 的参数：一切抽取结果默认带 <code>[推测，未确认]</code> 且<strong>绝不进入 2k 常驻层</strong>；确认后记录来源通道 <code>via</code>，误确认可按通道一键批量降级。
+          </p>
+          <div id="memDemoBox" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px">
+            <button class="btn btn-sm" id="downgradeDshBtn" type="button">按通道批量降级（via: dsh）</button>
+            <button class="btn btn-sm" id="resetMemBtn" type="button">重置记忆演示</button>
+          </div>
+        </div>
+
+        <div class="bento-card">
+          <h3>五条不可妥协的硬约束</h3>
+          <p>凡是 Git 快照能兜住的地方都不弹窗打断你；只在这五条底线上强制守死：</p>
+          <ul class="rule-list">
+            <li><strong>1. 原始素材只读：</strong><code>raw/</code> 与隐藏配置（<code>.git/</code>、<code>.env</code>、<code>ark.toml</code>）由路径守卫硬拒写。</li>
+            <li><strong>2. 一次操作一个快照：</strong>按用户意图而非单次工具调用合并提交 <code>ark(&lt;source&gt;)</code>，<code>git revert</code> 撤销不改写历史。</li>
+            <li><strong>3. 外部写动作必审：</strong>发邮件、对外发布不可逆，回环内暂停推 <code>pending_action</code>，拒绝结果如实回填给模型。</li>
+            <li><strong>4. 自有调用双上限预算：</strong>单次会话与每日 Token 双封顶，超出先截记忆再截断点并显式报告。</li>
+            <li><strong>5. 凭据只进 <code>.env</code>：</strong>绝不进仓库、不进 Vault 笔记、不落明文轨迹。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chapter 4: 5-Step Quickstart -->
+    <section id="quickstart" class="chapter">
+      <div class="sec-kicker">04 · 本地跑起来</div>
+      <h2>依赖就绪后，5 步接入你的现有 Obsidian 库。</h2>
+      <p class="chapter-lede">
+        前置只需 Python 3.11+、Git 和你原本就在用的 Obsidian 文件夹。不想装插件也能只跑前 3 步，直接当纯本地 MCP 知识服务给 Claude Code 或 DSH 调用。
+      </p>
+
+      <div class="steps-grid" id="stepTabs" role="tablist"></div>
+      <div class="term-box">
+        <pre id="stepCode"></pre>
+        <button class="copy-btn" id="copyCmdBtn" type="button">复制命令</button>
+      </div>
+    </section>
+
+    <!-- Side-by-Side Comparison Callout -->
+    <section class="compare-banner" aria-label="两种展示形态对比">
+      <div>
+        <h3>正在对比两种体验形态：当前是「产品概念页」</h3>
+        <p>
+          本页以叙事节奏分章节内嵌轻量交互微缩舞台；如果你想在一个全屏双区面板里同时操作完整 Markdown 真源、Collect 三栏收件箱、V7 任务周/月/年工作台与右侧四页边栏，可以一键切过去对比手感。
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="/projects/ark-workbench/demo/">切换到「完整双区工作台原型」 →</a>
+        <a class="btn" href="/projects/ark-workbench">回到工程深读总览</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        })
+      }
+
+      /* ── Theme Toggle ── */
+      var themeBtn = document.getElementById('themeToggle')
+      themeBtn.addEventListener('click', function () {
+        var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'
+        document.documentElement.setAttribute('data-theme', cur)
+        try { localStorage.setItem('ark-product-theme', cur) } catch (_) {}
+      })
+
+      /* ── Hero 3-Scene Interactive Stage ── */
+      var sceneState = {
+        active: 'collect',
+        staleConflict: false,
+        noteReverted: false,
+        mailDecision: 'pending'
+      }
+
+      function renderScene() {
+        var box = document.getElementById('sceneBody')
+        if (sceneState.active === 'collect') {
+          box.innerHTML =
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>Vault 真源 · <code>Ark 工作区/collect/2026-11-bili-agent.md</code></span><span class="pill ok">ark(astrbot) 单快照已落盘</span></div>' +
+              '<div class="md-box"><span class="md-fm">---\nsource: https://www.bilibili.com/video/BV1xx411c7mD\nchannel: astrbot-qq\nstatus: success\ntags: [agent, context, 采集]\n---</span>\n# 长上下文不是银弹：两层预算怎么切\n\n<span class="md-add">+ 核心结论：常驻层只装已确认偏好与当前话题断点（≤2k tok），其余一律走按需检索。</span>\n+ 原文时间锚点：[04:18] 为什么推测记忆混进系统提示词会造成跨会话污染\n+ 关联笔记：<span class="md-link">[[笔记/上下文分层设计]]</span> · <span class="md-link">[[ark/threads/ark-v2-design]]</span></div>' +
+            '</div>' +
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>触发入口 · 手机 QQ 私聊（经 AstrBot）</span><span class="pill ok">已完成实机验收</span></div>' +
+              '<div class="event-list">' +
+                '<div class="event-card"><div class="event-head"><b>你（手机 QQ）</b><span>18:42</span></div>把这个视频收进库里，晚上回电脑看：<code>bilibili.com/video/BV1xx411c7mD</code></div>' +
+                '<div class="event-card"><div class="event-head"><b>Ark Core · MCP 调用链</b><span>840ms</span></div><code>collect_submit</code> → 子进程 <code>ark-bili</code> 拉取 CC 字幕（不直接写盘）→ Core 校验路径守卫 → 写入 Markdown 并生成提交 <code>7c21e09</code>。</div>' +
+                '<div class="event-card"><div class="event-head"><b>QQ 回复</b><span>18:42</span></div>已入库《长上下文不是银弹》，自动挂上 2 条双链，回电脑打开 Obsidian 或 Claude Code 即可直接引用。</div>' +
+              '</div>' +
+            '</div>'
+        } else if (sceneState.active === 'resume') {
+          var conflictHtml = sceneState.staleConflict
+            ? '<span class="md-add">! 检测到过期 base_rev=8f3a1c（当前已推进至 9d41b02）：\n  未覆盖主文件！冲突更新已安全旁路至 ark/threads/.pending/claude-code-1905.md 待合并。</span>'
+            : '<span class="md-add">+ 下一步：把 R3 干扰项判据从 1-5 分改成 0/1/unknown 二元检查（updated_by: claude-code, rev: 9d41b02）</span>'
+          box.innerHTML =
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>话题断点 · <code>ark/threads/ark-v2-design.md</code></span><span class="pill accent">2k 常驻层装配</span></div>' +
+              '<div class="md-box"><span class="md-fm">---\nthread: ark-v2-design\nstatus: active\nrev: ' + (sceneState.staleConflict ? '9d41b02（主线未受破坏）' : '9d41b02') + '\n---</span>\n## 当前假设\n单进程同时暴露 /mcp 与 /v1，外部宿主与自带 Agent 共用同一套工具契约。\n\n## 未决问题\n多宿主并发保存同一条线程时，如何避免后写静默覆盖先写？\n\n' + conflictHtml + '</div>' +
+            '</div>' +
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>跨宿主切换 · Obsidian → Claude Code 2.1.304</span><span class="pill ok">四步实机通过</span></div>' +
+              '<div class="event-list">' +
+                '<div class="event-card"><div class="event-head"><b>1. Claude Code 启动时调用 <code>resume()</code></b><span>38ms</span></div>无需重述前情，自动装入已确认偏好 + <code>ark-v2-design</code> 断点 + 今日到期任务（合计 640 / 2000 tok）。</div>' +
+                '<div class="event-card"><div class="event-head"><b>2. 乐观锁 <code>base_rev</code> 并发验证</b><span>可交互切换</span></div>' +
+                  '<p style="margin:0 0 10px;color:var(--muted)">试一下当两个宿主拿着旧版本号同时保存时会发生什么：</p>' +
+                  '<button class="btn btn-sm ' + (sceneState.staleConflict ? 'btn-soft' : 'btn-primary') + '" id="toggleConflictBtn" type="button">' +
+                    (sceneState.staleConflict ? '✓ 已触发 .pending 旁路保护（点击恢复正常推进）' : '模拟携带过期 base_rev 保存线程') +
+                  '</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>'
+          document.getElementById('toggleConflictBtn').onclick = function () {
+            sceneState.staleConflict = !sceneState.staleConflict
+            renderScene()
+          }
+        } else {
+          var reverted = sceneState.noteReverted
+          var mail = sceneState.mailDecision
+          box.innerHTML =
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>Vault 内写入免弹窗 · <code>笔记/三体.md</code></span><span class="pill ' + (reverted ? 'warn' : 'ok') + '">' + (reverted ? '已 git revert 复原' : 'commit a41c90e · 可一键撤销') + '</span></div>' +
+              '<div class="md-box"><span class="md-fm">---\ntitle: 三体阅读札记\ntags: ' + (reverted ? '[科幻]' : '[科幻, 黑暗森林, 博弈论]') + '\n---</span>\n猜疑链成立的前提，不是恶意，而是光速限制下的沟通延迟。\n' +
+              (reverted ? '\n（已通过 git revert 精确退回整理前版本，历史提交完整保留不改写）' : '\n<span class="md-add">+ 关联双链：[[笔记/有限博弈与威慑纪元]]（由 organize 自动补齐，0 次弹窗打断）</span>') +
+              '</div>' +
+              '<div style="display:flex;gap:8px">' +
+                '<button class="btn btn-sm" id="revertDemoBtn" type="button">' + (reverted ? '↻ 重新执行免审批整理' : '↶ 一键撤销此次整理（git revert）') + '</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="stage-pane">' +
+              '<div class="pane-kicker"><span>Vault 外不可逆动作 · <code>ark.pending_action</code></span><span class="pill warn">必须人工拍板</span></div>' +
+              '<div class="event-list">' +
+                '<div class="event-card confirm">' +
+                  '<div class="event-head"><b>拦截工具：<code>mcp__agentmail__send_email</code></b><span>状态：' + (mail === 'pending' ? '暂停等待确认' : mail === 'approved' ? '已批准发送' : '已拒绝并回填模型') + '</span></div>' +
+                  '<div style="margin-bottom:10px">收件人：<code>team@example.com</code> · 主题：《本周采集与阅读纪要》<br><span style="color:var(--muted);font-size:12px">邮件发出后 Git 无法撤回，因此回环在此硬暂停。</span></div>' +
+                  '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                    '<button class="btn btn-sm btn-primary" id="approveMailBtn" type="button"' + (mail !== 'pending' ? ' disabled' : '') + '>批准发送</button>' +
+                    '<button class="btn btn-sm" id="rejectMailBtn" type="button"' + (mail !== 'pending' ? ' disabled' : '') + '>拒绝（回填给模型）</button>' +
+                    (mail !== 'pending' ? '<button class="btn btn-sm" id="resetMailBtn" type="button">重置确认卡</button>' : '') +
+                  '</div>' +
+                '</div>' +
+                (mail !== 'pending'
+                  ? '<div class="event-card">' + (mail === 'approved'
+                      ? '✓ 用户已批准，外发执行完成，结果由外部邮件系统记录。'
+                      : '✕ 用户已拒绝：未产生任何外部副作用，并将 <code>rejected_by_user</code> 作为工具结果回填给模型优雅收尾。') + '</div>'
+                  : '') +
+              '</div>' +
+            '</div>'
+          document.getElementById('revertDemoBtn').onclick = function () {
+            sceneState.noteReverted = !sceneState.noteReverted
+            renderScene()
+          }
+          var ap = document.getElementById('approveMailBtn')
+          var rj = document.getElementById('rejectMailBtn')
+          var rs = document.getElementById('resetMailBtn')
+          if (ap) ap.onclick = function () { sceneState.mailDecision = 'approved'; renderScene() }
+          if (rj) rj.onclick = function () { sceneState.mailDecision = 'rejected'; renderScene() }
+          if (rs) rs.onclick = function () { sceneState.mailDecision = 'pending'; renderScene() }
+        }
+      }
+
+      Array.prototype.forEach.call(document.querySelectorAll('[data-scene]'), function (btn) {
+        btn.addEventListener('click', function () {
+          sceneState.active = btn.getAttribute('data-scene')
+          Array.prototype.forEach.call(document.querySelectorAll('[data-scene]'), function (b) {
+            b.setAttribute('aria-selected', String(b === btn))
+          })
+          renderScene()
+        })
+      })
+      renderScene()
+
+      /* ── Chapter 1: Multi-Host Selector ── */
+      var HOSTS = [
+        {
+          id: 'obsidian',
+          name: 'Obsidian 面板',
+          proto: '/v1 SSE + /mcp',
+          grade: 'ok',
+          gradeText: '已完成实机验收',
+          summary: '2026-11-16 完成 8 步人工实机验收：对话、历史快照 diff 与一键撤销、记忆确认/降级、设置页四面板直连同一套 Core 工具。',
+          snippet: '端点：http://127.0.0.1:8650/v1 & /mcp\n鉴权：Authorization: Bearer <ARK_TOKEN>\n快照粒度：整轮对话合并为 1 条 ark(ark-agent) Git 提交',
+          resTok: 720,
+          odTok: 1850
+        },
+        {
+          id: 'claude',
+          name: 'Claude Code',
+          proto: 'stdio ⇄ /mcp',
+          grade: 'ok',
+          gradeText: '已完成实机验收',
+          summary: 'Claude Code 2.1.304 + Opus 5.5 实机四步验收通过（提问、带路径引用、写笔记、一键撤销），与桌面面板零时差读写同一份笔记。',
+          snippet: '// .mcp.json\n{\n  "ark-core": {\n    "command": "npx",\n    "args": ["mcp-remote", "http://127.0.0.1:8650/mcp", "--header", "Authorization: Bearer ${ARK_TOKEN}"]\n  }\n}',
+          resTok: 640,
+          odTok: 2100
+        },
+        {
+          id: 'dsh',
+          name: 'DSH',
+          proto: 'Streamable HTTP /mcp',
+          grade: 'ok',
+          gradeText: '已完成实机验收',
+          summary: 'DeepSeek Harness 0.1.0-rc.7 经 Cordis 配置直连 /mcp，实机跑通检索、引用、补双链与回滚闭环。',
+          snippet: '# Cordis MCP 配置\nserver: ark-core\ntransport: streamable_http\nurl: http://127.0.0.1:8650/mcp',
+          resTok: 610,
+          odTok: 1620
+        },
+        {
+          id: 'qq',
+          name: '手机 QQ · AstrBot',
+          proto: 'streamable_http /mcp',
+          grade: 'ok',
+          gradeText: '已完成实机验收',
+          summary: 'AstrBot 直连 Core 的 /mcp，人格提示词由共用 SKILL.md 拼接生成；已完成手机 QQ 私聊共享 Collect 采集与 Tasks 任务管理实机验收。',
+          snippet: '连接：AstrBot → streamable_http → /mcp\n共享能力：collect_submit / tasks_today / tasks_create_task / recall\n无需在机器人侧另起任何子进程',
+          resTok: 580,
+          odTok: 1240
+        },
+        {
+          id: 'mail',
+          name: '邮件 · AgentMail',
+          proto: '出站 MCP 扩展',
+          grade: 'warn',
+          gradeText: '标准 MCP 协议扩展接入',
+          summary: '按「优先复用现成 IMAP/SMTP MCP server」原则接入腾讯 AgentMail 方向：收信仅作只读素材，发信触发五条硬约束第 3 条事前确认（尚未跑真机验收，如实分级）。',
+          snippet: '入站：只读采集，不直接写 Vault\n出站：不在 auto_approve 名单 → 强制暂停推 ark.pending_action 确认卡',
+          resTok: 640,
+          odTok: 980
+        }
+      ]
+      var activeHost = HOSTS[0]
+
+      function renderHosts() {
+        var grid = document.getElementById('hostGrid')
+        grid.innerHTML = HOSTS.map(function (h) {
+          return (
+            '<button class="host-btn" type="button" data-host="' + h.id + '" aria-pressed="' + (h.id === activeHost.id) + '">' +
+              '<span class="pill ' + h.grade + '" style="width:fit-content"><span class="dot"></span>' + esc(h.gradeText) + '</span>' +
+              '<span class="host-name">' + esc(h.name) + '</span>' +
+              '<span class="host-proto">' + esc(h.proto) + '</span>' +
+            '</button>'
+          )
+        }).join('')
+
+        var ins = document.getElementById('hostInspector')
+        var resPct = Math.round((activeHost.resTok / 2000) * 100)
+        var odPct = Math.round((activeHost.odTok / 4000) * 100)
+        ins.innerHTML =
+          '<div style="display:flex;flex-direction:column;gap:10px">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+              '<b style="font-size:16px">' + esc(activeHost.name) + '</b>' +
+              '<span class="pill ' + activeHost.grade + '">' + esc(activeHost.gradeText) + '</span>' +
+            '</div>' +
+            '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(activeHost.summary) + '</p>' +
+            '<pre class="md-box" style="margin:0;flex:none">' + esc(activeHost.snippet) + '</pre>' +
+          '</div>' +
+          '<div class="budget-meter">' +
+            '<div style="font-size:13px;font-weight:650">双层上下文预算（不靠塞满大窗口）</div>' +
+            '<div>' +
+              '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>常驻层（已确认偏好 + Live State + 插件今日到期）</span><span class="mono">' + activeHost.resTok + ' / 2000 tok</span></div>' +
+              '<div class="bar-track"><div class="bar-fill ok" style="width:' + resPct + '%"></div></div>' +
+            '</div>' +
+            '<div>' +
+              '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>按需层（记忆与 Vault 笔记各半，用不满互让）</span><span class="mono">' + activeHost.odTok + ' / 4000 tok</span></div>' +
+              '<div class="bar-track"><div class="bar-fill" style="width:' + odPct + '%"></div></div>' +
+            '</div>' +
+            '<div style="font-size:12px;color:var(--faint)">超出预算时先截记忆、再截断点，并在返回体的 <code>truncated</code> 字段显式声明，绝不静默丢上下文。</div>' +
+          '</div>'
+
+        Array.prototype.forEach.call(grid.querySelectorAll('[data-host]'), function (b) {
+          b.onclick = function () {
+            var found = HOSTS.find(function (x) { return x.id === b.getAttribute('data-host') })
+            if (found) { activeHost = found; renderHosts() }
+          }
+        })
+      }
+      renderHosts()
+
+      /* ── Chapter 2: V7 Tasks & Collect Multi-View ── */
+      var TASKS = [
+        { id: 't-101', title: '收口 Ark v2 安装向导与示例配置', state: 'doing', due: '今日到期', tags: ['工作', '写作'], parent: 'v2 开源准备 · 3/5' },
+        { id: 't-102', title: '复核 AstrBot 私聊采集与任务联动记录', state: 'done', due: '本周完成', tags: ['工作', '报告'], parent: 'v2 开源准备 · 4/5' },
+        { id: 't-103', title: '整理 Kleppmann 本地优先软件演讲摘录', state: 'todo', due: '明天', tags: ['阅读', '写作'], parent: '' },
+        { id: 't-104', title: '补齐下周技术分享差旅与演示设备清单', state: 'todo', due: '已逾期 1 天', tags: ['工作', '出差'], parent: '' },
+        { id: 't-105', title: '跑通 evals/gate.py 回归门禁全量用例', state: 'done', due: '本周完成', tags: ['工作', '报告'], parent: '' },
+        { id: 't-106', title: '周末长跑 10km 与下月睡眠节律复盘', state: 'doing', due: '周日', tags: ['生活'], parent: '' }
+      ]
+      var CO_FLOW = {
+        '全部': [
+          { tag: '工作', count: 18, pct: 56 },
+          { tag: '报告', count: 9, pct: 28 },
+          { tag: '写作', count: 8, pct: 25 },
+          { tag: '阅读', count: 7, pct: 22 },
+          { tag: '出差', count: 5, pct: 16 },
+          { tag: '生活', count: 5, pct: 16 }
+        ],
+        '工作': [
+          { tag: '报告', count: 9, pct: 50 },
+          { tag: '写作', count: 5, pct: 28 },
+          { tag: '出差', count: 4, pct: 22 }
+        ],
+        '写作': [
+          { tag: '阅读', count: 6, pct: 75 },
+          { tag: '工作', count: 5, pct: 62 }
+        ]
+      }
+      var viewMode = 'tasks-board'
+      var activeTag = '全部'
+      var insightTag = '全部'
+
+      function renderPluginView() {
+        var el = document.getElementById('pluginViewBody')
+        if (viewMode === 'tasks-board') {
+          var tags = ['全部', '工作', '报告', '写作', '阅读', '出差', '生活']
+          var filtered = TASKS.filter(function (t) { return activeTag === '全部' || t.tags.indexOf(activeTag) >= 0 })
+          var cols = [
+            { key: 'todo', name: '待办' },
+            { key: 'doing', name: '进行中' },
+            { key: 'done', name: '已完成（本周）' }
+          ]
+          el.innerHTML =
+            '<div class="chip-row">' +
+              '<span style="font-size:12px;color:var(--faint)">自由标签筛选：</span>' +
+              tags.map(function (tg) {
+                return '<button class="tchip ' + (activeTag === tg ? 'on' : '') + '" type="button" data-btag="' + tg + '">' + tg + '</button>'
+              }).join('') +
+              '<span class="spacer"></span>' +
+              '<span class="pill warn">已逾期 1 · 今日到期 1</span>' +
+            '</div>' +
+            '<div class="kanban">' +
+              cols.map(function (c) {
+                var items = filtered.filter(function (x) { return x.state === c.key })
+                return (
+                  '<div class="kcol">' +
+                    '<div class="kcol-head"><span>' + c.name + '</span><span>' + items.length + '</span></div>' +
+                    (items.length
+                      ? items.map(function (it) {
+                          return (
+                            '<div class="kcard">' +
+                              '<div style="font-weight:600">' + esc(it.title) + '</div>' +
+                              (it.parent ? '<div style="font-size:11.5px;color:var(--accent)">↳ ' + esc(it.parent) + '</div>' : '') +
+                              '<div class="kcard-tags">' +
+                                it.tags.map(function (tg) { return '<span class="ktag">#' + esc(tg) + '</span>' }).join('') +
+                                '<span style="margin-left:auto;color:' + (it.due.indexOf('逾期') >= 0 ? 'var(--danger)' : 'var(--faint)') + '">' + esc(it.due) + '</span>' +
+                              '</div>' +
+                            '</div>'
+                          )
+                        }).join('')
+                      : '<div style="font-size:12px;color:var(--faint);padding:12px 4px">当前标签下无任务</div>') +
+                  '</div>'
+                )
+              }).join('') +
+            '</div>'
+          Array.prototype.forEach.call(el.querySelectorAll('[data-btag]'), function (b) {
+            b.onclick = function () { activeTag = b.getAttribute('data-btag'); renderPluginView() }
+          })
+        } else if (viewMode === 'tasks-insight') {
+          var months = [
+            ['1 月', 2, 'lv1'], ['2 月', 1, ''], ['3 月', 3, 'lv1'], ['4 月', 2, 'lv1'],
+            ['5 月', 4, 'lv2'], ['6 月', 3, 'lv1'], ['7 月', 2, 'lv1'], ['8 月', 5, 'lv2'],
+            ['9 月', 4, 'lv2'], ['10 月', 6, 'lv2'], ['11 月', 5, 'lv2'], ['12 月', 0, '']
+          ]
+          var rows = CO_FLOW[insightTag] || CO_FLOW['全部']
+          el.innerHTML =
+            '<div class="chip-row">' +
+              '<span style="font-size:12px;color:var(--faint)">点选标签查看「共现构成」变化：</span>' +
+              ['全部', '工作', '写作'].map(function (tg) {
+                return '<button class="tchip ' + (insightTag === tg ? 'on' : '') + '" type="button" data-itag="' + tg + '">' + tg + '</button>'
+              }).join('') +
+              '<span class="spacer"></span>' +
+              '<span style="font-size:12px;color:var(--muted)">手动生成周报/月报/年报 → <code>tasks/reviews/*.md</code>（可撤销）</span>' +
+            '</div>' +
+            '<div class="insight-grid">' +
+              '<div>' +
+                '<div style="font-size:13px;font-weight:650;margin-bottom:10px">2026 月度完成热力（共 37 项完成）</div>' +
+                '<div class="heat-grid">' +
+                  months.map(function (m) {
+                    return '<div class="heat-cell ' + m[2] + '"><span>' + m[0] + '</span><span class="mono">' + m[1] + ' 件</span></div>'
+                  }).join('') +
+                '</div>' +
+              '</div>' +
+              '<div>' +
+                '<div style="font-size:13px;font-weight:650;margin-bottom:10px">' +
+                  (insightTag === '全部' ? '精力流向 · 全年标签分布' : '「#' + insightTag + '」任务的共现标签构成') +
+                '</div>' +
+                '<div class="flow-rows">' +
+                  rows.map(function (r) {
+                    return (
+                      '<div class="flow-row" data-jump="' + (CO_FLOW[r.tag] ? r.tag : '全部') + '">' +
+                        '<strong>#' + esc(r.tag) + '</strong>' +
+                        '<div class="bar-track"><div class="bar-fill" style="width:' + r.pct + '%"></div></div>' +
+                        '<span class="mono" style="text-align:right;color:var(--muted)">' + r.count + ' (' + r.pct + '%)</span>' +
+                      '</div>'
+                    )
+                  }).join('') +
+                '</div>' +
+              '</div>' +
+            '</div>'
+          Array.prototype.forEach.call(el.querySelectorAll('[data-itag]'), function (b) {
+            b.onclick = function () { insightTag = b.getAttribute('data-itag'); renderPluginView() }
+          })
+          Array.prototype.forEach.call(el.querySelectorAll('[data-jump]'), function (r) {
+            r.onclick = function () { insightTag = r.getAttribute('data-jump'); renderPluginView() }
+          })
+        } else {
+          el.innerHTML =
+            '<div class="kanban">' +
+              '<div class="kcard"><span class="pill ok" style="width:fit-content">已完成 · Bilibili</span><b>Local-First 软件十年回顾：为什么文件比云数据库长寿</b><span style="color:var(--muted);font-size:12.5px">经手机 QQ 投递 → CC 字幕提取 → 提炼 4 条结构化要点并双链至 [[笔记/真源原则]]</span></div>' +
+              '<div class="kcard"><span class="pill ok" style="width:fit-content">已完成 · 公众号文章</span><b>LLM-as-a-Judge 校准实践：为什么二元判据优于 1–5 分</b><span style="color:var(--muted);font-size:12.5px">经 Obsidian 面板投递 → 清洗正文 Markdown → 自动归档至技术分类</span></div>' +
+              '<div class="kcard"><span class="pill warn" style="width:fit-content">需处理 · 字幕缺失</span><b>无字幕生肉访谈音频（支持一键转本地语音转写重试）</b><span style="color:var(--muted);font-size:12.5px">失败原因显式记录在条目状态中，绝不静默写入残缺空笔记</span></div>' +
+            '</div>'
+        }
+      }
+
+      Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (btn) {
+        btn.addEventListener('click', function () {
+          viewMode = btn.getAttribute('data-view')
+          Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (b) {
+            b.setAttribute('aria-selected', String(b === btn))
+          })
+          renderPluginView()
+        })
+      })
+      renderPluginView()
+
+      /* ── Chapter 3: Interactive Memory Isolation Demo ── */
+      var INIT_MEM = [
+        { id: 'm1', text: '写技术方案时先列「不做什么」与硬边界，再写正体设计。', status: 'confirmed', via: 'obsidian', tok: 68 },
+        { id: 'm2', text: '代码示例默认使用 TypeScript 严格模式与显式返回类型。', status: 'confirmed', via: 'dsh', tok: 57 },
+        { id: 'm3', text: '偏好把周报固定在每周五晚上 21:00 自动汇总。', status: 'inferred', via: null, tok: 52 }
+      ]
+      var mems = JSON.parse(JSON.stringify(INIT_MEM))
+
+      function renderMemDemo() {
+        var resTok = mems.reduce(function (s, m) { return m.status === 'confirmed' ? s + m.tok : s }, 0)
+        document.getElementById('memBudgetPill').textContent = '常驻层：' + resTok + ' / 2000 tok'
+        var box = document.getElementById('memDemoBox')
+        box.innerHTML = mems.map(function (m) {
+          var isConf = m.status === 'confirmed'
+          return (
+            '<div class="mem-item">' +
+              '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+                '<span class="pill ' + (isConf ? 'ok' : 'warn') + '">' +
+                  (isConf ? 'confirmed · via: ' + m.via + '（进常驻层）' : 'inferred · 不进常驻层') +
+                '</span>' +
+                (!isConf
+                  ? '<button class="btn btn-sm btn-primary" type="button" data-confirm="' + m.id + '">确认升入常驻层</button>'
+                  : '<span class="mono" style="font-size:11.5px;color:var(--faint)">+' + m.tok + ' tok</span>') +
+              '</div>' +
+              '<div>' + (isConf ? '' : '<strong style="color:var(--warn)">[推测，未确认] </strong>') + esc(m.text) + '</div>' +
+            '</div>'
+          )
+        }).join('')
+        Array.prototype.forEach.call(box.querySelectorAll('[data-confirm]'), function (b) {
+          b.onclick = function () {
+            var item = mems.find(function (x) { return x.id === b.getAttribute('data-confirm') })
+            if (item) { item.status = 'confirmed'; item.via = 'obsidian'; renderMemDemo() }
+          }
+        })
+      }
+      document.getElementById('downgradeDshBtn').onclick = function () {
+        mems.forEach(function (m) { if (m.via === 'dsh') { m.status = 'inferred'; m.via = null } })
+        renderMemDemo()
+      }
+      document.getElementById('resetMemBtn').onclick = function () {
+        mems = JSON.parse(JSON.stringify(INIT_MEM))
+        renderMemDemo()
+      }
+      renderMemDemo()
+
+      /* ── Chapter 4: 5-Step Quickstart ── */
+      var STEPS = [
+        { title: '1. 初始化库', sub: '生成配置与令牌', cmd: 'ark init ~/Documents/MyVault\n# 自动生成 ark.toml、mcp.json 与 .env（含随机 ARK_TOKEN），并初始化 Git 仓库' },
+        { title: '2. 配置只读与预算', sub: '填 ark.toml 与 .env', cmd: '# ark.toml\nvault = "~/Documents/MyVault"\nreadonly = ["raw/"]\n\n[core]\nlisten = "127.0.0.1:8650"\ntrace = "summary"' },
+        { title: '3. 启动单进程大脑', sub: '同时暴露 /mcp 与 /v1', cmd: 'ark serve\n# Listening on http://127.0.0.1:8650 (/mcp Streamable HTTP + /v1 OpenAI SSE)' },
+        { title: '4. 开启 Obsidian 面板', sub: '填入地址与 ARK_TOKEN', cmd: '# Obsidian → 设置 → Ark 插件\nServer URL: http://127.0.0.1:8650\nToken:      <粘贴 .env 中的 ARK_TOKEN>' },
+        { title: '5. 接入任意Agent', sub: 'Claude Code / DSH / QQ', cmd: 'claude mcp add --transport http ark-core http://127.0.0.1:8650/mcp \\\n  --header "Authorization: Bearer $ARK_TOKEN"' }
+      ]
+      var stepIdx = 0
+      function renderSteps() {
+        var tabs = document.getElementById('stepTabs')
+        tabs.innerHTML = STEPS.map(function (s, i) {
+          return (
+            '<button class="step-btn" role="tab" type="button" data-step="' + i + '" aria-selected="' + (i === stepIdx) + '">' +
+              '<div style="font-weight:650;font-size:13.5px">' + esc(s.title) + '</div>' +
+              '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + esc(s.sub) + '</div>' +
+            '</button>'
+          )
+        }).join('')
+        document.getElementById('stepCode').textContent = STEPS[stepIdx].cmd
+        Array.prototype.forEach.call(tabs.querySelectorAll('[data-step]'), function (b) {
+          b.onclick = function () { stepIdx = Number(b.getAttribute('data-step')); renderSteps() }
+        })
+      }
+      document.getElementById('copyCmdBtn').onclick = function () {
+        var btn = document.getElementById('copyCmdBtn')
+        try {
+          navigator.clipboard.writeText(STEPS[stepIdx].cmd)
+          btn.textContent = '✓ 已复制'
+          setTimeout(function () { btn.textContent = '复制命令' }, 1600)
+        } catch (_) {}
+      }
+      renderSteps()
+    })()
+  </script>
+</body>
+</html>

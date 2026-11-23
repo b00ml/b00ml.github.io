@@ -220,7 +220,7 @@ describe('repository llms.txt contract', () => {
     for (const [slug, title] of [
       ['ark-workbench', 'Ark 知识工作台'],
       ['finance-review-agent', '企业财务审核 Agent'],
-      ['english-content-workbench', '英语内容生产工作台']
+      ['english-content-workbench', '英语教研内容生产工作台']
     ]) {
       expect(text).toContain(`### ${title}`)
       expect(text).toContain(`${SITE_URL}/projects/${slug})`)

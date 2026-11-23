@@ -2,28 +2,35 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ARK_ACTION_TYPES,
+  ARK_CHANNELS,
   ARK_HOSTS,
   ARK_SCENARIO_META,
   ARK_SIDEBAR_TABS,
   ARK_WORKSPACE_TABS,
-  MEMORY_INFERRED_PREFIX,
-  STALE_BASE_REV,
+  channelOf,
   createInitialState,
   dispatch,
+  isTaskDueToday,
+  isTaskOverdue,
+  MEMORY_INFERRED_PREFIX,
   memoryDisplay,
   residentPreview,
   runScenario,
   scenarioActions,
+  STALE_BASE_REV,
   taskContextPreview,
+  taskCooccurrence,
+  taskTagCounts,
+  taskYearSummary,
   undoSnapshot,
   type ArkAction,
   type ArkDemoState
 } from './state'
 
 /**
- * Every assertion here drives the public action surface only: `createInitialState`
- * plus `dispatch`. Nothing reaches into a renderer, a selector or a private helper,
- * so the panels can be rewritten without touching these tests.
+ * Every assertion here drives the public surface only: `createInitialState`,
+ * `dispatch`, and exported pure selectors. Nothing reaches into DOM nodes or
+ * private helpers, so the panels can evolve without brittle coupling.
  */
 const run = (actions: ArkAction[], from: ArkDemoState = createInitialState()) =>
   actions.reduce((state, action) => dispatch(state, action), from)
@@ -37,10 +44,16 @@ const PROBES: ArkAction[] = [
   { type: 'organize-note' },
   { type: 'undo-latest' },
   { type: 'undo-snapshot', commit: 'deadbee' },
-  { type: 'collect-submit', url: 'https://www.bilibili.com/video/BV1GJ411x7h7', host: 'astrbot-qq' },
+  {
+    type: 'collect-submit',
+    url: 'https://www.bilibili.com/video/BV1GJ411x7h7',
+    host: 'astrbot-qq'
+  },
   { type: 'collect-finish', id: 'c4' },
   { type: 'collect-retry', id: 'c2' },
-  { type: 'move-task', id: 't1', status: 'doing' },
+  { type: 'create-task', title: '补齐实机验收截图', tags: ['工作', '报告'], dueToday: true },
+  { type: 'move-task', id: 't-2183', status: 'doing' },
+  { type: 'generate-task-review', period: 'week', tag: '工作' },
   { type: 'run-channel-action', host: 'dsh', action: 'list-tasks' },
   { type: 'request-agentmail-send' },
   { type: 'resolve-pending-action', decision: 'approve' },
@@ -51,8 +64,8 @@ const PROBES: ArkAction[] = [
   { type: 'reset' }
 ]
 
-describe('ark demo initial state', () => {
-  test('opens on the note tab with eight panels, no history and nothing pending', () => {
+describe('ark demo initial state & channel grades', () => {
+  test('opens on the note tab with eight panels, V7 multi-tag tasks, no history and nothing pending', () => {
     const state = createInitialState()
 
     expect(ARK_WORKSPACE_TABS).toEqual(['note', 'collect', 'tasks', 'channels'])
@@ -63,18 +76,48 @@ describe('ark demo initial state', () => {
     expect(state.sidebarTab).toBe('chat')
     expect(state.scenario).toBeNull()
     expect(state.snapshots).toEqual([])
+    expect(state.taskReviews).toEqual([])
     expect(state.pendingAction).toBeNull()
     expect(state.mail.sentCount).toBe(0)
 
     expect(state.note.path.endsWith('.md')).toBe(true)
     expect(state.note.content.length).toBeGreaterThan(40)
     expect(state.collectItems.length).toBeGreaterThanOrEqual(3)
-    expect(state.tasks.map((task) => task.status)).toContain('doing')
-    expect(state.tasks.some((task) => task.dueToday)).toBe(true)
+    expect(state.tasks.length).toBeGreaterThanOrEqual(20)
+    expect(state.tasks.every((task) => task.id.startsWith('t-'))).toBe(true)
+    expect(state.tasks.some((task) => task.tags.length >= 2)).toBe(true)
+    expect(state.tasks.some((task) => Boolean(task.parent && task.progress))).toBe(true)
+    expect(state.tasks.some((task) => isTaskOverdue(task))).toBe(true)
+    expect(state.tasks.some((task) => isTaskDueToday(task))).toBe(true)
     expect(state.memories.some((memory) => memory.status === 'inferred')).toBe(true)
     expect(state.memories.some((memory) => memory.status === 'confirmed')).toBe(true)
     expect(state.thread.pendingConflicts).toEqual([])
     expect(state.chat.length).toBeGreaterThan(0)
+  })
+
+  test('marks astrbot-qq as real-machine verified while keeping agentmail as mcp-extension', () => {
+    const qq = channelOf('astrbot-qq')
+    const mail = channelOf('agentmail')
+
+    expect(qq?.grade).toBe('verified')
+    expect(qq?.gradeLabel).toBe('已完成实机验收')
+    expect(qq?.detail).toContain('streamable_http')
+    expect(qq?.detail).toContain('/mcp')
+    expect(qq?.detail).toContain('Collect')
+    expect(qq?.detail).toContain('Tasks')
+
+    expect(mail?.grade).toBe('mcp-extension')
+    expect(mail?.gradeLabel).toBe('标准 MCP 协议扩展接入')
+
+    expect(ARK_CHANNELS.filter((ch) => ch.grade === 'verified').map((ch) => ch.host)).toEqual([
+      'obsidian',
+      'claude-code',
+      'dsh',
+      'astrbot-qq'
+    ])
+    expect(ARK_CHANNELS.filter((ch) => ch.grade === 'mcp-extension').map((ch) => ch.host)).toEqual([
+      'agentmail'
+    ])
   })
 
   test('is deterministic, so the same scenario always lands on the same screen', () => {
@@ -100,11 +143,7 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
     expect(state.snapshots[0].reverted).toBe(false)
     expect(state.snapshots[0].message).toContain(state.note.path)
 
-    // Nothing was held back for approval: rewriting a file inside the vault is
-    // covered by the snapshot, not by a dialog.
     expect(state.pendingAction).toBeNull()
-
-    // The coloured diff is derived from the two contents, not hand-written.
     expect(state.snapshots[0].diff).toContain('- tags: [知识管理]')
     expect(state.snapshots[0].diff).toContain('+ tags: [知识管理, 工作流]')
   })
@@ -127,8 +166,6 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
     expect(undone.snapshots).toHaveLength(1)
     expect(undone.snapshots[0].commit).toBe(commit)
     expect(undone.snapshots[0].reverted).toBe(true)
-    // A snapshot is never removed or rewritten; undo is one more fact, not a
-    // rollback of the history list itself.
     expect(undone.snapshots[0].message).toBe(organised.snapshots[0].message)
     expect(undoSnapshot(organised, commit)).toEqual(undone)
   })
@@ -136,11 +173,9 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
   test('only the newest un-reverted snapshot can be undone', () => {
     const organised = run([{ type: 'organize-note' }])
     const older = organised.snapshots[0].commit
-    const withTask = dispatch(organised, { type: 'move-task', id: 't1', status: 'done' })
+    const withTask = dispatch(organised, { type: 'move-task', id: 't-2183', status: 'done' })
 
     expect(withTask.snapshots).toHaveLength(2)
-    // An older snapshot is buried under a newer one: undoing it would silently
-    // throw away the later write, so the reducer refuses.
     expect(undoSnapshot(withTask, older)).toEqual(withTask)
     expect(undoSnapshot(withTask, 'does-not-exist')).toEqual(withTask)
 
@@ -149,11 +184,14 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
     expect(undone.note.content).toBe(organised.note.content)
   })
 
-  test('moving a task appends one snapshot and rewrites the day context preview', () => {
-    const state = run([{ type: 'move-task', id: 't1', status: 'done' }])
+  test('moving a task appends an ark(plugin:tasks) snapshot, sets completed, and updates context.md', () => {
+    const state = run([{ type: 'move-task', id: 't-2183', status: 'done' }])
+    const movedTask = state.tasks.find((task) => task.id === 't-2183')
 
-    expect(state.tasks.find((task) => task.id === 't1')?.status).toBe('done')
+    expect(movedTask?.status).toBe('done')
+    expect(movedTask?.completed).toBeDefined()
     expect(state.snapshots).toHaveLength(1)
+    expect(state.snapshots[0].source).toBe('ark(plugin:tasks)')
     expect(state.snapshots[0].previousTasks).toBeDefined()
     expect(state.pendingAction).toBeNull()
 
@@ -161,13 +199,42 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
     expect(taskContextPreview(state)).not.toContain('整理本周采集的三条视频')
 
     // Same status is not a write.
-    expect(dispatch(state, { type: 'move-task', id: 't1', status: 'done' })).toEqual(state)
+    expect(dispatch(state, { type: 'move-task', id: 't-2183', status: 'done' })).toEqual(state)
   })
 
   test('undoing a task snapshot puts the board back', () => {
-    const moved = run([{ type: 'move-task', id: 't1', status: 'done' }])
+    const moved = run([{ type: 'move-task', id: 't-2183', status: 'done' }])
     const undone = undoSnapshot(moved, moved.snapshots[0].commit)
 
+    expect(undone.tasks).toEqual(createInitialState().tasks)
+    expect(undone.snapshots[0].reverted).toBe(true)
+  })
+
+  test('creating a multi-tag task records an ark(plugin:tasks) snapshot and reverses cleanly', () => {
+    const created = run([
+      {
+        type: 'create-task',
+        title: '归档手机 QQ 实机联调截图',
+        tags: ['工作', '报告'],
+        dueToday: true
+      }
+    ])
+
+    expect(created.workspaceTab).toBe('tasks')
+    expect(created.tasks.length).toBe(createInitialState().tasks.length + 1)
+    expect(created.tasks[0]).toMatchObject({
+      title: '归档手机 QQ 实机联调截图',
+      tags: ['工作', '报告'],
+      status: 'todo',
+      dueToday: true,
+      source: 'ark(plugin:tasks)'
+    })
+    expect(created.tasks[0].id.startsWith('t-')).toBe(true)
+    expect(taskContextPreview(created)).toContain('归档手机 QQ 实机联调截图')
+    expect(created.snapshots).toHaveLength(1)
+    expect(created.snapshots[0].source).toBe('ark(plugin:tasks)')
+
+    const undone = dispatch(created, { type: 'undo-latest' })
     expect(undone.tasks).toEqual(createInitialState().tasks)
     expect(undone.snapshots[0].reverted).toBe(true)
   })
@@ -190,6 +257,76 @@ describe('in-vault writes: no confirmation, one snapshot, exact undo', () => {
   })
 })
 
+describe('V7 tasks insights: tag frequencies, co-occurrence breakdown, heatmap and review generation', () => {
+  test('computes frequency-sorted multi-tag chips and 12-month completion heatmap', () => {
+    const state = createInitialState()
+    const tags = taskTagCounts(state.tasks)
+
+    expect(tags[0].tag).toBe('工作')
+    expect(tags.map((entry) => entry.tag)).toEqual(
+      expect.arrayContaining(['工作', '报告', '出差', '阅读', '生活', '写作'])
+    )
+    for (let i = 1; i < tags.length; i += 1) {
+      expect(tags[i - 1].count).toBeGreaterThanOrEqual(tags[i].count)
+    }
+
+    const summary = taskYearSummary(state.tasks, { tag: 'all' })
+    expect(summary.byMonth).toHaveLength(12)
+    expect(summary.byMonth.some((n) => n === 0)).toBe(true)
+    expect(summary.byMonth.some((n) => n >= 1 && n <= 2)).toBe(true)
+    expect(summary.byMonth.some((n) => n >= 3)).toBe(true)
+    expect(summary.byMonth.reduce((sum, n) => sum + n, 0)).toBe(summary.yearDone.length)
+  })
+
+  test('pivots flow from overall distribution to co-occurring tags when a tag is selected', () => {
+    const state = createInitialState()
+
+    const allFlow = taskCooccurrence(state.tasks, { tag: 'all' })
+    expect(allFlow.mode).toBe('distribution')
+    expect(allFlow.pivotTag).toBeNull()
+    expect(allFlow.rows[0].tag).toBe('工作')
+
+    const workFlow = taskCooccurrence(state.tasks, { tag: '工作' })
+    expect(workFlow.mode).toBe('cooccurrence')
+    expect(workFlow.pivotTag).toBe('工作')
+    expect(workFlow.totalDone).toBeGreaterThan(5)
+    expect(workFlow.rows.map((row) => row.tag)).not.toContain('工作')
+    expect(workFlow.rows.map((row) => row.tag)).toEqual(
+      expect.arrayContaining(['报告', '出差', '写作'])
+    )
+  })
+
+  test('generating week/month/year review writes reviews/*.md with wikilinks and an undoable snapshot', () => {
+    const withReview = run([
+      { type: 'generate-task-review', period: 'year', tag: '工作', query: '出差' }
+    ])
+
+    expect(withReview.taskReviews).toHaveLength(1)
+    expect(withReview.taskReviews[0].path).toBe('Ark 工作区/tasks/reviews/2026.md')
+    expect(withReview.taskReviews[0].filterTag).toBe('工作')
+    expect(withReview.taskReviews[0].filterQuery).toBe('出差')
+    expect(withReview.taskReviews[0].completedCount).toBeGreaterThan(0)
+    expect(withReview.taskReviews[0].content).toContain('[[tasks/t-')
+    expect(withReview.snapshots).toHaveLength(1)
+    expect(withReview.snapshots[0].source).toBe('ark(plugin:tasks)')
+    expect(withReview.snapshots[0].message).toContain('Ark 工作区/tasks/reviews/2026.md')
+
+    // Re-running with identical filter & tasks is idempotent.
+    expect(
+      dispatch(withReview, {
+        type: 'generate-task-review',
+        period: 'year',
+        tag: '工作',
+        query: '出差'
+      })
+    ).toEqual(withReview)
+
+    const undone = dispatch(withReview, { type: 'undo-latest' })
+    expect(undone.taskReviews).toEqual([])
+    expect(undone.snapshots[0].reverted).toBe(true)
+  })
+})
+
 describe('external outbound mail never completes directly', () => {
   test('a send request stops at a pending action and sends nothing', () => {
     const state = run([{ type: 'request-agentmail-send' }])
@@ -200,7 +337,6 @@ describe('external outbound mail never completes directly', () => {
     expect(state.pendingAction?.payloadPreview.to).toContain('@')
     expect(state.mail.sentCount).toBe(0)
     expect(state.sidebarTab).toBe('chat')
-    // Outbound mail is not a vault write, so it must not fabricate a snapshot.
     expect(state.snapshots).toEqual([])
   })
 
@@ -281,7 +417,6 @@ describe('memory isolation between inferred and confirmed', () => {
     expect(downgraded.memories.find((entry) => entry.id === 'm2')?.status).toBe('confirmed')
     expect(residentPreview(downgraded).ids).toEqual(['m2'])
 
-    // A channel with nothing confirmed changes nothing at all.
     const untouched = dispatch(downgraded, { type: 'downgrade-by-channel', host: 'agentmail' })
     expect(untouched).toEqual(downgraded)
   })
@@ -342,7 +477,11 @@ describe('preset scenarios', () => {
 
     expect(state.scenario).toBe('cross-channel-collect-mail')
     expect(state.collectItems).toHaveLength(5)
-    expect(state.collectItems[4]).toMatchObject({ id: 'c5', sourceHost: 'astrbot-qq', status: 'done' })
+    expect(state.collectItems[4]).toMatchObject({
+      id: 'c5',
+      sourceHost: 'astrbot-qq',
+      status: 'done'
+    })
     expect(state.snapshots.map((snapshot) => snapshot.source)).toEqual(['ark(astrbot)'])
     expect(state.pendingAction?.status).toBe('pending')
     expect(state.mail.sentCount).toBe(0)
@@ -369,8 +508,6 @@ describe('preset scenarios', () => {
     expect(state.thread.pendingConflicts).toHaveLength(1)
     expect(state.thread.pendingConflicts[0].host).toBe('claude-code')
 
-    // The desktop host's valid save moved the rev; the terminal's stale save then
-    // left both the rev and the summary exactly where they were.
     const beforeStaleSave = run(scenarioActions('memory-and-concurrency').slice(0, 3))
     expect(state.thread.rev).toBe(beforeStaleSave.thread.rev)
     expect(state.thread.summary).toBe(beforeStaleSave.thread.summary)

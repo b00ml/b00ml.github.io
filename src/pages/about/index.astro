@@ -48,7 +48,7 @@ const headings = [
     <div class='rounded-xl border border-border bg-card p-4'>
       <p class='text-sm font-medium text-card-foreground'>确定性前置</p>
       <p class='mt-2 text-xs leading-5 text-muted-foreground'>
-        能用代码判断的，绝不花 Token 问模型。英语内容生产工作台先用跨字段规则打回初稿，模型只判它真正擅长的部分。
+        能用代码判断的，绝不花 Token 问模型。英语教研内容生产工作台先用跨字段规则打回初稿，模型只按二元 Rubric 判它真正擅长的部分。
       </p>
     </div>
     <div class='rounded-xl border border-border bg-card p-4'>
@@ -76,8 +76,7 @@ const headings = [
       <p class='mt-2 text-sm leading-relaxed text-muted-foreground'>
         独立完成复杂业务链路切分（如报销审核 / 发票稽核 /
         银行对账，或资料接入到人工终审七段出题流水线）；明确「确定性规则直判 → 模型提供第二意见 →
-        分歧与存疑转人工复核
-        Gate」的权责边界；将任务执行、人工复核与外部系统副作用拆成独立状态账本，避免单一完成态掩盖局部异常。
+        分歧与存疑转人工复核 Gate」的权责边界；将机器建议、人工复核决定与外部业务系统状态分开记录，并用事后可撤销快照替代高频弹窗打断。
       </p>
     </div>
 
@@ -121,14 +120,18 @@ const headings = [
   <ul>
     <li>
       <a href='/projects/ark-workbench'><strong>Ark 知识工作台</strong></a>（2026 至今 · 独立开发 ·
-      在做）：Obsidian 插件 + Agent
-      运行时底座，专注个人长期上下文资产沉淀。拆分会话、任务、外部副作用、记忆生命周期与索引版本五套独立账本，实现
-      CAS 原子写入守卫、人审激活记忆门禁与 155 文件 / 563 条记录无损迁移，建立七层证据体系并通过 <strong
-        >3,778</strong
-      > 项统一回归测试（附<a
+      在做）：面向个人长期上下文沉淀与跨端思考复用的常驻知识服务（v2）。坚持「Vault Markdown
+      唯一真源」，由单进程 <code>ark serve</code> 统一暴露 <code>/mcp</code> 与
+      <code>/v1</code>，让 Obsidian 面板、命令行 Agent 与移动端渠道共用同一个大脑；用「一次操作一个可撤销
+      Git 快照」替代逐次写审批，仅对不可逆外部写动作保留事前确认；以 2k 常驻 + 4k 按需双层预算隔离
+      <code>inferred</code> 推测记忆与 <code>confirmed</code> 已确认结论，并通过
+      <strong>658</strong> 项自动化测试，以及 Obsidian、Claude Code、DSH 与手机 QQ（经 AstrBot）多端实机验收和 Trace + 二元 Rubric
+      回归双闭环（附<a href='/projects/ark-workbench/demo/'>在线交互演示</a>、<a
+        href='/projects/ark-workbench/product/'>产品概念页</a
+      >与<a
         href='/diagrams/ark-architecture.html'
         target='_blank'
-        rel='noopener noreferrer'>可交互系统架构图</a
+        rel='noopener noreferrer'>全渠道交互架构图</a
       >）。
     </li>
     <li>
@@ -147,11 +150,19 @@ const headings = [
       >。
     </li>
     <li>
-      <a href='/projects/english-content-workbench'><strong>英语内容生产工作台</strong></a>（2026 ·
-      产品与实现 · 已交付）：面向教研批量出题的七段式生成与质检流水线，落地「规则前置拦截 → 双轮
-      Judge 复核 → 人工终审」三层判定，跨数据库、队列、检查点与文件卷实现 Outbox
+      <a href='/projects/english-content-workbench'><strong>英语教研内容生产工作台</strong></a>（2026 ·
+      产品与实现 · 已交付）：基于 LangGraph 编排的七段式教研出题与评测流水线，落地「跨字段硬规则前置 → 独立 Judge
+      二元 Rubric（<code>0/1/unknown</code>）评审 → 人工终审」闭环，用 <code>unknown</code> 占比反查判据歧义以推进人人/人机一致率校准与 Bad Case 归因迭代，并跨数据库、队列、检查点与文件卷实现 Outbox
       投递与三层幂等；通过 <strong>1,154</strong> 项自动化测试（含 63 项真实 PostgreSQL 迁移集成，应用层覆盖率
-      <strong>84.05%</strong>）与 44/44 原文页码回溯回归。
+      <strong>84.05%</strong>）与 44/44 原文页码回溯回归。配套提供<a
+        href='/projects/english-content-workbench/demo/'>观测与评测闭环演示</a
+      >、<a href='/diagrams/english-pipeline.html' target='_blank' rel='noopener noreferrer'
+        >七阶段流水线交互图</a
+      >与<a
+        href='https://github.com/b00ml/english-edit-agent-platform'
+        target='_blank'
+        rel='noopener noreferrer'>开源仓库</a
+      >。
     </li>
   </ul>
 

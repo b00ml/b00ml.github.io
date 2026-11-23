@@ -1,36 +1,76 @@
 /**
- * The three-gate quality loop of the English content workbench, as a pure state
- * machine: 规则校验 → Judge 评分 → 人工复核, plus the false-pass calibration
- * ledger behind the review gate.
+ * 英语教研内容生产工作台 · LangGraph 观测与评测闭环台 — 纯函数确定性状态机。
  *
- * This file is plain JavaScript on purpose: the demo page at
- * `public/projects/english-content-workbench/demo/demo.js` is a static asset
- * that cannot import a TypeScript module at runtime, so it carries a copy of
- * this file **byte for byte**. `src/lib/demo/english/state.ts` adds the
- * TypeScript types on top, `state.test.ts` pins the invariants, and
- * `mirror.test.ts` fails the suite the moment the two copies differ.
+ * 完整承载六大核心工程闭环（零后端、确定性回放）：
+ *   A. LangGraph 7 节点链路级 Trace 与 Span 载荷观测
+ *   B. Judge 四项硬核工程配置（跨模型解耦 / temp=0.0 / 先证据后判定 / 硬规则 0 Token 短路）
+ *   C. 评测指标下钻拆解（4 大教学维度 × 6 项原子判据）
+ *   D. 二元 Rubric（1 / 0 / unknown）合成就绪分与关键项一票否决
+ *   E. unknown 占比反查定义歧义 + 人人一致率（≥85%）/ 人机一致率（≥90%）三版校准迭代 + 20/5 假通过冷启动保护
+ *   F. Bad Case 根因归因矩阵与黄金回归集回流飞轮
  *
- * Everything here is deterministic and side-effect free. A "round" is one pass
- * of a draft through one gate, and the preset scripts below are the whole
- * simulation — nothing is generated at runtime.
+ * 本文件刻意保持纯 JavaScript：`public/projects/english-content-workbench/demo/demo.js`
+ * 作为纯静态资源逐字节内联本文件，`src/lib/demo/english/state.ts` 提供 TypeScript 类型外壳，
+ * `mirror.test.ts` 对两处副本做逐字节一致性校验。
  */
+
+export const PROJECT_NAME = '英语教研内容生产工作台'
+export const WORKBENCH_NAME = '英语教研内容生产工作台 · LangGraph 观测与评测闭环台'
+
+export const GENERATOR_MODEL = 'qwen-plus-latest'
+export const JUDGE_MODEL = 'deepseek-v4-flash'
+export const RETRIEVER_MODEL = 'bge-m3 + bge-reranker-v2'
+export const RULE_ENGINE = 'Pydantic v2 + YAML 硬规则引擎'
 
 export const QUALITY_THRESHOLD = 70
 export const MAX_REVISION_ROUNDS = 3
 export const REVIEW_TARGET = 20
 export const FALSE_PASS_TARGET = 5
-/** Cost estimate unit price, ¥ per 1k tokens (the platform's default). */
+/** 成本估算单价：¥ / 1k tokens */
 export const COST_PER_1K_TOKENS = 0.002
 
-/** Rubric weights; the total is their weighted sum, rounded. */
-export const RUBRIC_WEIGHTS = { accuracy: 0.4, uniqueness: 0.3, distractors: 0.3 }
+export const CALIBRATION_SET_SIZE = 40
+export const IAA_THRESHOLD = 85
+export const HUMAN_AI_THRESHOLD = 90
+export const UNKNOWN_TARGET_MAX = 5
+export const REGRESSION_BASE_COUNT = 128
+
+export const BINARY_VERDICTS = ['1', '0', 'unknown']
+
+export const WORKSPACE_VIEWS = [
+  {
+    id: 'pipeline',
+    label: '单题闯关与 LangGraph Trace 观测',
+    shortLabel: '① 单题闯关 & Trace',
+    summary: '7 节点链路 · 二元 Rubric · 原文切片锚点'
+  },
+  {
+    id: 'calibration',
+    label: 'Rubric 二元校准与人机一致迭代',
+    shortLabel: '② Rubric 校准迭代',
+    summary: 'unknown 反查 → 85% / 90% 阈值'
+  },
+  {
+    id: 'flywheel',
+    label: 'Judge 配置与 Bad Case 归因飞轮',
+    shortLabel: '③ Judge & BadCase 飞轮',
+    summary: '跨模型 temp=0.0 · 回归集回流'
+  }
+]
 
 export const ACTION_NAMES = [
   'selectPreset',
+  'switchView',
   'runGate',
   'focusAnchor',
+  'selectNode',
   'humanDecide',
+  'recordExtraReview',
   'toggleTrace',
+  'selectRubricVersion',
+  'advanceRubricVersion',
+  'selectBadCase',
+  'resolveBadCase',
   'reset'
 ]
 
@@ -40,24 +80,363 @@ export const GATE_LABELS = {
   'human-review': '③ 人工复核'
 }
 
-/**
- * The invariants the page states in words. They are shipped with the machine so
- * what a reader is told matches what the reducer does.
- */
-export const INVARIANTS = [
-  '硬规则拦下的轮次没有 Judge 分数，Judge Token 消耗为 0',
-  'Judge 低于 70 分自动进入下一轮改版，最多 3 轮',
-  'Judge 达到 70 分停在待人工复核，绝不自动进入样本库',
-  '来源页码锚点与当前轮的教材切片一一对应',
-  '人工驳回高分题计入假通过，20 条标注且 5 条假通过前不校准',
-  '一键重置还原当前预设的初始状态'
+export const LANGGRAPH_NODE_SPECS = [
+  { id: 'retrieve_chunks', step: 1, label: '知识检索', role: '结构化切片召回' },
+  { id: 'generate_draft', step: 2, label: '题目生成', role: '生成模型出初稿' },
+  { id: 'schema_rule_guard', step: 3, label: '服务端硬规则', role: '0 Token 跨字段拦截' },
+  { id: 'binary_rubric_judge', step: 4, label: '二元 Rubric 评审', role: '跨模型 temp=0.0' },
+  { id: 'revise_draft', step: 5, label: '带诊断回炉改版', role: '定向修复未过项' },
+  { id: 'human_interrupt', step: 6, label: '人工复核断点', role: 'interrupt_before 挂起' },
+  { id: 'sample_or_badcase', step: 7, label: '样本入库 / BadCase 归因', role: '终审分流回流' }
 ]
 
-const JUDGE_MODEL = 'deepseek-v4-flash'
-const RULE_ENGINE = '规则引擎 · Pydantic 二次校验'
+/**
+ * Pillar B · Judge 模型四项工程规范：与页面展示严格同源。
+ */
+export const JUDGE_ENGINEERING_SPECS = [
+  {
+    id: 'cross-model-decoupling',
+    badge: 'Spec 01 · 异构解耦',
+    title: '跨模型解耦评审（消除同族自评偏见）',
+    summary:
+      '生成侧固定使用 qwen-plus-latest（初稿 temp=0.7 / 改版 temp=0.3），评审侧独立使用 deepseek-v4-flash，切断生成模型对自身行文偏好的高分滤镜。',
+    configLine: `generator=${GENERATOR_MODEL} ↔ judge=${JUDGE_MODEL}`
+  },
+  {
+    id: 'deterministic-sampling',
+    badge: 'Spec 02 · 确定采样',
+    title: 'temperature = 0.0 + JSON Schema 强约束',
+    summary:
+      '评审采样固定 temperature = 0.0，配合 strict JSON Schema 枚举约束每个原子判据仅允许输出 "1" | "0" | "unknown"，保证同稿重评结果稳定可复现。',
+    configLine: 'temperature=0.0 · response_format=json_schema(strict=true)'
+  },
+  {
+    id: 'evidence-first-cot',
+    badge: 'Spec 03 · 证据前置',
+    title: '先证据后判定（Evidence-First CoT）',
+    summary:
+      'Schema 字段顺序强制要求先输出 aligned_chunk_id 与教材原文逐字摘录 evidence_quote，再逐条推导并给出 0 / 1 / unknown，严禁无出处笼统打印象分。',
+    configLine: 'aligned_chunk_id → evidence_quote → items[R1..R6].verdict'
+  },
+  {
+    id: 'rule-short-circuit',
+    badge: 'Spec 04 · 规则短路',
+    title: '确定性代码规则前置短路（0 Judge Token）',
+    summary:
+      '完形空位数与 blanks 数组不一致、ABCD 选项文本重复、标答越界等跨字段错误由 Pydantic v2 + YAML 规则直接拒收，judgeScore = null、Judge Token = 0。',
+    configLine: 'Pydantic model_validator → short_circuit_judge (tokens=0)'
+  }
+]
 
-/** A round the deterministic rules killed: no model, no tokens, no score. */
-function ruleFail(index, ruleErrors, draftStem, sourceAnchor) {
+export const JUDGE_SCHEMA_SNIPPET = `{
+  "aligned_chunk_id": "p42-c3",
+  "evidence_quote": "The only clue was the word CROATOAN carved on a post...",
+  "verdicts": {
+    "R1": { "reason": "设空唯一考查过去分词作后置定语", "verdict": "1" },
+    "R2": { "reason": "仅 A. carved 表被动成立，B/C/D 均排除", "verdict": "1" },
+    "R3": { "reason": "三项干扰分别对应不定式/现在分词/原形易错点", "verdict": "1" },
+    "R4": { "reason": "四项语法功能互斥无同义重叠", "verdict": "1" },
+    "R5": { "reason": "解析引用页码与 p42-c3 原文逐句吻合", "verdict": "1" },
+    "R6": { "reason": "专有名词 CROATOAN 超出课标常规表，交人工确认", "verdict": "unknown" }
+  }
+}`
+
+/**
+ * Pillar C & D · 四大教学维度下钻为 6 项原子二元 Rubric（总权重 = 100）。
+ */
+export const BINARY_RUBRIC_DIMENSIONS = [
+  {
+    id: 'alignment',
+    order: 1,
+    title: '考点与题干契合度',
+    rubricIds: ['R1'],
+    totalWeight: 18
+  },
+  {
+    id: 'uniqueness',
+    order: 2,
+    title: '答案正确与唯一性',
+    rubricIds: ['R2'],
+    totalWeight: 22
+  },
+  {
+    id: 'distractors',
+    order: 3,
+    title: '干扰项教学有效性',
+    rubricIds: ['R3', 'R4'],
+    totalWeight: 33
+  },
+  {
+    id: 'grounding',
+    order: 4,
+    title: '解析与教材原文 Grounding',
+    rubricIds: ['R5', 'R6'],
+    totalWeight: 27
+  }
+]
+
+export const BINARY_RUBRIC_ITEMS = [
+  {
+    id: 'R1',
+    dimensionId: 'alignment',
+    dimensionTitle: '考点与题干契合度',
+    title: '目标语法/词汇考点唯一命中',
+    criteria: '设空或设问唯一锁定目标语法/词汇知识点，未偏移为普通词义辨析',
+    weight: 18,
+    critical: true
+  },
+  {
+    id: 'R2',
+    dimensionId: 'uniqueness',
+    dimensionTitle: '答案正确与唯一性',
+    title: '标准答案代入成立且其余选项代入均不成立',
+    criteria: '标答在语法和语境上完全成立，其余 3 个干扰项代入均有客观排除依据',
+    weight: 22,
+    critical: true
+  },
+  {
+    id: 'R3',
+    dimensionId: 'distractors',
+    dimensionTitle: '干扰项教学有效性',
+    title: '每个干扰项对应明确易错点而非凑数废项',
+    criteria: '干扰项须命中同词根变形、课标易混词或跨句语境误读，禁止无关词凑数',
+    weight: 16,
+    critical: false
+  },
+  {
+    id: 'R4',
+    dimensionId: 'distractors',
+    dimensionTitle: '干扰项教学有效性',
+    title: '干扰项间无语义重叠或同义并存',
+    criteria: '四个选项语义与时态边界互斥，同一语境下绝不出现双解并存',
+    weight: 17,
+    critical: true
+  },
+  {
+    id: 'R5',
+    dimensionId: 'grounding',
+    dimensionTitle: '解析与教材原文 Grounding',
+    title: '解析引用的页码与教材切片原文逐句吻合',
+    criteria: 'evidence_quote 与 aligned_chunk_id 原文逐字对齐，无跨页错引或无依据臆造',
+    weight: 16,
+    critical: true
+  },
+  {
+    id: 'R6',
+    dimensionId: 'grounding',
+    dimensionTitle: '解析与教材原文 Grounding',
+    title: '词汇超纲率符合目标学段课标',
+    criteria: '除教材既有专有名词外，题干与选项超纲生词占比控制在课标阈值内',
+    weight: 11,
+    critical: false
+  }
+]
+
+/** 兼容四维度权重汇总表（供契约校验与概览展示） */
+export const RUBRIC_WEIGHTS = {
+  alignment: 0.18,
+  uniqueness: 0.22,
+  distractors: 0.33,
+  grounding: 0.27
+}
+
+/**
+ * Pillar E · R3「干扰项教学有效性」在 40 题双盲标注集上的三版演进轨迹。
+ * 所有百分比均对应 N = 40 的精确整数样本比（1/40 = 2.5%）。
+ */
+export const RUBRIC_CALIBRATION_VERSIONS = [
+  {
+    version: 'v1',
+    step: 1,
+    title: 'v1 · 初始模糊定义',
+    targetRubricId: 'R3',
+    targetRubricTitle: '干扰项教学有效性',
+    sampleSize: CALIBRATION_SET_SIZE,
+    promptDefinition: '「干扰项具有一定迷惑性且难度适中，能够有效考查学生英语水平。」',
+    changeHighlight: '尚未拆解何为「迷惑性」与「难度适中」，完全依赖主观语感判断。',
+    unknownCount: 10,
+    unknownRate: 25.0,
+    iaaMatchCount: 29,
+    iaaRate: 72.5,
+    humanAiMatchCount: 27,
+    humanAiRate: 67.5,
+    cohenKappa: 0.36,
+    gateReady: false,
+    statusBadge: '禁止启用自动门禁',
+    diagnosis:
+      'unknown 占比高达 25.0% 且人人一致率仅 72.5%（未达 85% 阈值），说明不是模型笨，而是 Rubric 定义含糊，禁止启用自动门禁！',
+    disagreementCase:
+      '例 #14（高一完形）：干扰项放了同话题名词 voyage / journey。教研员甲判 1（认为话题相关有迷惑性），教研员乙判 0（动词空塞名词属凑数废项），Judge 因「难度适中」无客观锚点输出 unknown。',
+    nextActionLabel: '拆解歧义，迭代至 v2'
+  },
+  {
+    version: 'v2',
+    step: 2,
+    title: 'v2 · 拆解词性与混淆源',
+    targetRubricId: 'R3',
+    targetRubricTitle: '干扰项教学有效性',
+    sampleSize: CALIBRATION_SET_SIZE,
+    promptDefinition:
+      '「每个干扰项须属于目标空的同词性语法变形（时态/语态/非谓语）或同义近形课标易混词，否则判 0。」',
+    changeHighlight: '删去「一定迷惑性/难度适中」形容词，改写为可核验的词性变形与课标易混词集合。',
+    unknownCount: 4,
+    unknownRate: 10.0,
+    iaaMatchCount: 34,
+    iaaRate: 85.0,
+    humanAiMatchCount: 33,
+    humanAiRate: 82.5,
+    cohenKappa: 0.66,
+    gateReady: false,
+    statusBadge: '人人已达标 · 待补反例边界',
+    diagnosis:
+      'unknown 降至 10.0%，人人一致率升至 85.0%（≥ 85% 达标 ✓），但人机一致率 82.5% 仍距 90% 差一步——分歧集中漏在完形填空「跨句语境逻辑干扰项」。',
+    disagreementCase:
+      '例 #29（完形连词空）：选项含 however / therefore / besides。两位教研员均判 1（典型跨句逻辑易错点），但 Judge 按 v2 字面寻找「词形变化」未果，保守输出 unknown / 0。',
+    nextActionLabel: '补齐反例边界，收敛至 v3 定稿'
+  },
+  {
+    version: 'v3',
+    step: 3,
+    title: 'v3 · 补齐反例边界与缺省证据规则（定稿）',
+    targetRubricId: 'R3',
+    targetRubricTitle: '干扰项教学有效性',
+    sampleSize: CALIBRATION_SET_SIZE,
+    promptDefinition:
+      '「干扰项须命中以下三类教学易错点之一：① 同词根时态/语态/非谓语变形；② 课标高频近义/近形易混词；③ 完形/阅读跨句因果或指代误读项。纯凑数无关词判 0；若缺乏题干或切片上下文支撑排他性验证，直判 unknown。」',
+    changeHighlight:
+      '补入跨句语境干扰正例与凑数词反例边界，并显式规定「无上下文证据直判 unknown」防强行猜判。',
+    unknownCount: 1,
+    unknownRate: 2.5,
+    iaaMatchCount: 36,
+    iaaRate: 90.0,
+    humanAiMatchCount: 37,
+    humanAiRate: 92.5,
+    cohenKappa: 0.85,
+    gateReady: true,
+    statusBadge: '已达可信阈值 · 正式纳入线上门禁',
+    diagnosis:
+      "unknown 占比收敛至 2.5%，人人一致率 90.0%（≥ 85% ✓），人机一致率 92.5%（≥ 90% ✓，Cohen's κ = 0.85），正式纳入线上自动门禁！",
+    disagreementCase:
+      '仅剩例 #38（古英语诗歌引文生僻修辞）1 题触发 unknown 交人工兜底；其余 39 题人机二元判定高度对齐。',
+    nextActionLabel: null
+  }
+]
+
+/**
+ * Pillar F · 代表性 Bad Case 根因归因矩阵与回流动作。
+ */
+export const BAD_CASES = [
+  {
+    id: 'BC-01',
+    title: '完形填空题号与 blanks 数组错位 + 选项重复',
+    stage: 'schema_rule_guard · 服务端校验前',
+    symptom:
+      '生成初稿 passage 含 4 处设空，但 blanks 数组仅输出 3 项，且选项 B 与 D 均为 to carve。',
+    category: '确定性规则缺口',
+    rootCause: '早期把格式与跨字段一致性混在 LLM Prompt 里提醒，既浪费 Judge Token 又偶发漏检。',
+    fixAction:
+      '下沉至 Pydantic v2 model_validator + YAML 跨字段硬规则，不调模型 0 Token 直接短路拦截。',
+    impactMetric: '畸形结构题拦截率 100%，单次短路节省约 2,380 Judge Tokens',
+    regressionTag: 'rule_cloze_blank_parity_and_dedup'
+  },
+  {
+    id: 'BC-02',
+    title: '阅读理解跨页表格漏切导致无出处臆造',
+    stage: 'retrieve_chunks · 知识检索',
+    symptom:
+      '固定字符滑窗把 P.57–58 珊瑚白化恢复周期对照段切碎，生成模型凭外部常识编造未出现的周数。',
+    category: 'RAG 结构化切块缺失',
+    rootCause: 'PDF 切块未尊重教材自然章节、Language Focus 与跨页段落边界，关键证据块未进 Top-5。',
+    fixAction: '改为按教材标题层级与段落结构切块 + BM25/向量混合重排，评测集 Recall@5 达 44/44。',
+    impactMetric: '教材证据块 Recall@5 升至 44/44（100%），R5 原文对齐违例清零',
+    regressionTag: 'rag_cross_page_section_chunking'
+  },
+  {
+    id: 'BC-03',
+    title: '89 分高分题双解共存被人工驳回（False Pass）',
+    stage: 'human_interrupt · 人工复核',
+    symptom:
+      '过去虚拟语气题获 Judge 89 分通过，但教研员复核发现 D 项 had been studying 在持续语境下与标答 C. had studied 双解并存。',
+    category: 'R4 干扰项同义排他判据缺口',
+    rootCause: 'R4 旧判据只检查字面近义词，未要求核验「同一时间状语下不同完成时态的语法相容性」。',
+    fixAction:
+      '收紧 R4 二元排他判据（强制代入检验时态体貌互斥性），并将本题沉淀为黄金回归集必测反例。',
+    impactMetric: '同类时态双解假通过清零，R4 单项人机一致率升至 95.0%',
+    regressionTag: 'rubric_r4_subjunctive_aspect_exclusivity'
+  },
+  {
+    id: 'BC-04',
+    title: '初稿目标语法点偏移为普通词义辨析',
+    stage: 'generate_draft · 题目生成',
+    symptom: '指定考查「过去分词作后置定语」，初稿却生成四个不同实义动词过去分词的词义题。',
+    category: '生成 Prompt 约束漂移',
+    rootCause: '生成模板仅传入知识点名称，缺少同词根语法形式对比槽位约束。',
+    fixAction:
+      '在 generate_draft 注入同词根非谓语变形槽位约束，并由 R1 唯一命中二元判据自动兜底回炉。',
+    impactMetric: '首轮考点唯一命中率提升至 94%，平均改版轮次收敛至 1.2 轮',
+    regressionTag: 'gen_grammar_slot_homoroot_constraint'
+  }
+]
+
+/**
+ * 页面底部展示并由单测锁死的核心不变量。
+ */
+export const INVARIANTS = [
+  '硬规则拦下的轮次不调用 Judge 模型，judgeScore 为 null 且 Judge Token 消耗为 0',
+  'Judge 采用跨模型解耦与 temperature = 0.0，先输出教材证据再给出 6 项 1/0/unknown 二元判定',
+  '综合就绪分低于 70 分或关键项出现 0 分时自动携带诊断回炉改版，最多 3 轮',
+  'Judge 达标后停在 LangGraph 人工复核断点，未经人工通过绝不自动写入样本库',
+  'unknown 占比过高优先反查 Rubric 定义歧义；人人一致率 ≥ 85% 且人机一致率 ≥ 90% 方可上线门禁',
+  '人工驳回高分题计入假通过（满 20 条复核且含 5 条假通过触发复盘），Bad Case 归因后回流黄金回归集'
+]
+
+/**
+ * 计算 6 项二元 Rubric（1 / 0 / unknown）的合成就绪分与关键门禁状态。
+ */
+export function evaluateBinaryRubrics(verdicts) {
+  let score = 0
+  const passIds = []
+  const zeroIds = []
+  const unknownIds = []
+  const criticalZeroIds = []
+
+  for (const item of BINARY_RUBRIC_ITEMS) {
+    const verdict = verdicts[item.id]
+    if (!BINARY_VERDICTS.includes(verdict)) {
+      throw new Error(`invalid binary verdict for ${item.id}: ${verdict}`)
+    }
+    if (verdict === '1') {
+      score += item.weight
+      passIds.push(item.id)
+    } else if (verdict === '0') {
+      zeroIds.push(item.id)
+      if (item.critical) criticalZeroIds.push(item.id)
+    } else {
+      unknownIds.push(item.id)
+    }
+  }
+
+  const dimensionBreakdown = {}
+  for (const dim of BINARY_RUBRIC_DIMENSIONS) {
+    const earned = BINARY_RUBRIC_ITEMS.filter(
+      (item) => item.dimensionId === dim.id && verdicts[item.id] === '1'
+    ).reduce((sum, item) => sum + item.weight, 0)
+    dimensionBreakdown[dim.id] = Math.round((earned / dim.totalWeight) * 100)
+  }
+
+  return {
+    score,
+    passed: score >= QUALITY_THRESHOLD && criticalZeroIds.length === 0,
+    passIds,
+    zeroIds,
+    unknownIds,
+    criticalZeroIds,
+    dimensionBreakdown
+  }
+}
+
+/** 确定性规则直接拦截的轮次：不调 Judge、无分数、0 Token。 */
+function ruleFail(index, ruleErrors, draftStem, draftOptions, sourceAnchor) {
   return {
     round: index,
     stage: 'schema-rule',
@@ -65,15 +444,26 @@ function ruleFail(index, ruleErrors, draftStem, sourceAnchor) {
     ruleErrors,
     judgeScore: null,
     judgeBreakdown: null,
+    rubricVerdicts: null,
+    rubricNotes: null,
+    criticalZeroIds: [],
+    evidenceQuote: null,
     draftStem,
+    draftOptions,
     sourceAnchor,
     tokensUsed: 0,
-    trace: { model: RULE_ENGINE, tokensIn: 0, tokensOut: 0, latencyMs: 12 }
+    trace: {
+      model: RULE_ENGINE,
+      temperature: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: 12
+    }
   }
 }
 
-/** A draft that cleared the rules; the model has not scored it yet. */
-function rulePass(index, draftStem, sourceAnchor) {
+/** 通过确定性规则但尚未调用 Judge 的轮次：0 Judge Token。 */
+function rulePass(index, draftStem, draftOptions, sourceAnchor) {
   return {
     round: index,
     stage: 'schema-rule',
@@ -81,31 +471,60 @@ function rulePass(index, draftStem, sourceAnchor) {
     ruleErrors: [],
     judgeScore: null,
     judgeBreakdown: null,
+    rubricVerdicts: null,
+    rubricNotes: null,
+    criticalZeroIds: [],
+    evidenceQuote: null,
     draftStem,
+    draftOptions,
     sourceAnchor,
     tokensUsed: 0,
-    trace: { model: RULE_ENGINE, tokensIn: 0, tokensOut: 0, latencyMs: 14 }
+    trace: {
+      model: RULE_ENGINE,
+      temperature: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: 14
+    }
   }
 }
 
-function judged(index, breakdown, draftStem, sourceAnchor, tokensUsed, latencyMs) {
-  const score = Math.round(
-    breakdown.accuracy * RUBRIC_WEIGHTS.accuracy +
-      breakdown.uniqueness * RUBRIC_WEIGHTS.uniqueness +
-      breakdown.distractors * RUBRIC_WEIGHTS.distractors
-  )
+/** 二元 Rubric Judge 评审轮次：temperature = 0.0，先证据后 1/0/unknown 判定。 */
+function judged(
+  index,
+  verdicts,
+  rubricNotes,
+  evidenceQuote,
+  draftStem,
+  draftOptions,
+  sourceAnchor,
+  tokensUsed,
+  latencyMs
+) {
+  const result = evaluateBinaryRubrics(verdicts)
   const tokensIn = Math.round(tokensUsed * 0.82)
   return {
     round: index,
     stage: 'llm-judge',
-    passed: score >= QUALITY_THRESHOLD,
+    passed: result.passed,
     ruleErrors: [],
-    judgeScore: score,
-    judgeBreakdown: breakdown,
+    judgeScore: result.score,
+    judgeBreakdown: result.dimensionBreakdown,
+    rubricVerdicts: { ...verdicts },
+    rubricNotes: { ...rubricNotes },
+    criticalZeroIds: result.criticalZeroIds,
+    evidenceQuote,
     draftStem,
+    draftOptions,
     sourceAnchor,
     tokensUsed,
-    trace: { model: JUDGE_MODEL, tokensIn, tokensOut: tokensUsed - tokensIn, latencyMs }
+    trace: {
+      model: JUDGE_MODEL,
+      temperature: 0.0,
+      tokensIn,
+      tokensOut: tokensUsed - tokensIn,
+      latencyMs
+    }
   }
 }
 
@@ -127,13 +546,27 @@ const MCQ_ANCHOR = {
   excerpt: 'If she had studied harder last term, she would have passed the exam.'
 }
 
-const CLOZE_STEM_FIRST = `Read the passage and choose the best option for each blank.
+const CLOZE_STEM_FIRST = `Read the passage and choose the best option for Blank 3.
 
 The colony of Roanoke was established in 1587 ___1___ one hundred and fifteen settlers. Their governor, John White, sailed back to England for supplies, ___2___ a war delayed his return for three years. When he finally came back, the settlement was empty. The only clue was the word CROATOAN ___3___ on a post. ___4___`
 
-const CLOZE_STEM_FIXED = `Read the passage and choose the best option for each blank.
+const CLOZE_STEM_FIXED = `Read the passage and choose the best option for Blank 3.
 
 The colony of Roanoke was established in 1587 ___1___ one hundred and fifteen settlers. Their governor, John White, sailed back to England for supplies, ___2___ a war delayed his return for three years. When he finally came back, the settlement was empty. The only clue was the word CROATOAN ___3___ on a post, and the letters C-R-O ___4___ into a nearby tree.`
+
+const CLOZE_OPTIONS_BROKEN = [
+  { key: 'A', text: 'carved' },
+  { key: 'B', text: 'to carve' },
+  { key: 'C', text: 'carving' },
+  { key: 'D', text: 'to carve' }
+]
+
+const CLOZE_OPTIONS_FIXED = [
+  { key: 'A', text: 'carved' },
+  { key: 'B', text: 'to carve' },
+  { key: 'C', text: 'carving' },
+  { key: 'D', text: 'be carved' }
+]
 
 const READING_STEM_FIRST = `Read the passage and answer the question.
 
@@ -141,37 +574,48 @@ Coral bleaching happens when water stays too warm for too long. The coral expels
 
 Question: According to the passage, what decides whether a bleached reef recovers?`
 
-const READING_STEM_REVISED = `Read the passage and answer the question.
-
-Coral bleaching happens when water stays too warm for too long. The coral expels the algae that live inside its tissue and give it both colour and most of its food. What is left is a white skeleton that can still recover if the water cools again within a few weeks. A reef that bleaches in four consecutive years, however, has almost no time to rebuild.
-
-Question: According to the passage, which condition decides whether a bleached reef can recover?`
-
 const READING_STEM_FINAL = `Read the passage and answer the question.
 
 Coral bleaching happens when water stays too warm for too long. The coral expels the algae that live inside its tissue and give it both colour and most of its food. What is left is a white skeleton that can still recover if the water cools again within a few weeks. A reef that bleaches in four consecutive years, however, has almost no time to rebuild.
 
 Question: According to the passage, which condition most directly decides whether a bleached reef can recover?`
 
+const READING_OPTIONS_FIRST = [
+  { key: 'A', text: 'How long the warm water lasts and whether it cools again.' },
+  { key: 'B', text: 'How many algae the coral expels on the first warm day.' },
+  { key: 'C', text: 'How white the skeleton looks after the algae leave.' },
+  { key: 'D', text: 'How many fish still swim around the reef.' }
+]
+
+const READING_OPTIONS_FINAL = [
+  { key: 'A', text: 'Whether the surrounding water cools again within a few weeks.' },
+  { key: 'B', text: 'Whether the expelled algae change colour before drifting away.' },
+  { key: 'C', text: 'Whether the white skeleton hardens during the warm season.' },
+  { key: 'D', text: 'Whether nearby reefs expel their algae at the same speed.' }
+]
+
 const MCQ_STEM = `Choose the best option to complete the sentence.
 
 If she ___ harder last term, she would have passed the exam.`
 
+const MCQ_OPTIONS = [
+  { key: 'A', text: 'studied' },
+  { key: 'B', text: 'studies' },
+  { key: 'C', text: 'had studied' },
+  { key: 'D', text: 'had been studying' }
+]
+
 const CLOZE_PRESET = {
   id: 'cloze-rule-block',
-  label: '① 完形填空被硬规则拦截',
+  threadId: 'lg-thread-cloze-042',
+  label: '① 完形填空 · 硬规则 0 Token 拦截',
   questionType: 'cloze',
   title: '完形填空 · The Lost Colony',
   stem: CLOZE_STEM_FIRST,
-  options: [
-    { key: 'A', text: 'carved' },
-    { key: 'B', text: 'to carve' },
-    { key: 'C', text: 'carving' },
-    { key: 'D', text: 'to carve' }
-  ],
+  options: CLOZE_OPTIONS_BROKEN,
   answer: 'A',
   explanation:
-    '这里是非谓语作后置定语修饰 word，carved 是过去分词表被动（被刻下的那个词）；to carve 是不定式，不能单独作后置定语。B 与 D 的正文完全重复，本身就该被规则拦下。',
+    '此处考查非谓语动词作后置定语修饰 the word CROATOAN，carved 为过去分词表被动完成（被刻在木柱上的词）；不定式 to carve 与现在分词 carving 均不合语态。初稿中选项 B 与 D 重复且空位计数错配，在进入 Judge 前直接由服务端硬规则 0 Token 拦截。',
   chunks: [
     {
       page: 42,
@@ -212,9 +656,27 @@ const CLOZE_PRESET = {
         '选项 B 与 D 的正文完全重复：to carve'
       ],
       CLOZE_STEM_FIRST,
+      CLOZE_OPTIONS_BROKEN,
       CLOZE_ANCHOR
     ),
-    judged(2, { accuracy: 92, uniqueness: 85, distractors: 86 }, CLOZE_STEM_FIXED, CLOZE_ANCHOR, 2380, 4120)
+    judged(
+      2,
+      { R1: '1', R2: '1', R3: '1', R4: '1', R5: '1', R6: 'unknown' },
+      {
+        R1: '设空精准锁定过去分词作后置定语考点',
+        R2: '仅 A. carved 表被动成立，其余三项语法均排除',
+        R3: 'B 不定式、C 现在分词、D 被动原形分别对应典型易错点',
+        R4: '已消除重复项，四项语法功能互斥',
+        R5: '解析引用与 P.42 · 块 3 原文逐字吻合',
+        R6: '历史专名 Roanoke / CROATOAN 不在常规课标词表，记 unknown 请教研员确认注释'
+      },
+      'The only clue was the word CROATOAN carved on a post, and the letters C-R-O cut into a tree nearby.',
+      CLOZE_STEM_FIXED,
+      CLOZE_OPTIONS_FIXED,
+      CLOZE_ANCHOR,
+      2380,
+      4120
+    )
   ],
   ledgerSeed: { totalReviewed: 0, falsePassCount: 0 },
   endDecision: 'pending'
@@ -222,19 +684,15 @@ const CLOZE_PRESET = {
 
 const READING_PRESET = {
   id: 'reading-low-score',
-  label: '② 阅读理解低分自动改版',
+  threadId: 'lg-thread-read-057',
+  label: '② 阅读理解 · 二元诊断自动改版',
   questionType: 'reading',
   title: '阅读理解 · Coral Bleaching',
   stem: READING_STEM_FIRST,
-  options: [
-    { key: 'A', text: 'How long the warm water lasts and whether it cools again.' },
-    { key: 'B', text: 'How many algae the coral can expel in one season.' },
-    { key: 'C', text: 'How white the skeleton looks after the algae leave.' },
-    { key: 'D', text: 'How many fish still live around the reef.' }
-  ],
+  options: READING_OPTIONS_FIRST,
   answer: 'A',
   explanation:
-    '原文把恢复条件写成两个：水要重新变凉，而且要在几周之内。B、C、D 都抓了细节（藻类、颜色、鱼），却绕开了「水何时变凉」这个决定条件。',
+    '原文明确指出白化珊瑚能否恢复取决于水温是否在几周内重新变凉（cools again within a few weeks）。首轮因题干问法宽泛（R2=unknown）且干扰项流于表面细节（R3=0）仅得 62 分，自动携带二元诊断回炉改版至 100 分。',
   chunks: [
     {
       page: 57,
@@ -268,9 +726,43 @@ const READING_PRESET = {
     }
   ],
   rounds: [
-    rulePass(1, READING_STEM_FIRST, READING_ANCHOR),
-    judged(2, { accuracy: 70, uniqueness: 58, distractors: 62 }, READING_STEM_REVISED, READING_ANCHOR, 3120, 5310),
-    judged(3, { accuracy: 92, uniqueness: 86, distractors: 88 }, READING_STEM_FINAL, READING_ANCHOR, 4180, 5620)
+    rulePass(1, READING_STEM_FIRST, READING_OPTIONS_FIRST, READING_ANCHOR),
+    judged(
+      2,
+      { R1: '1', R2: 'unknown', R3: '0', R4: '1', R5: '1', R6: '1' },
+      {
+        R1: '命中阅读因果决定条件定位考点',
+        R2: '题干 what decides 未限定单次直接恢复条件，与跨年退化段存在边界歧义（判 unknown）',
+        R3: '违例：C/D 仅描摹颜色与鱼群表象，缺乏因果倒置干扰深度（判 0）',
+        R4: '四个选项表述无同义重叠',
+        R5: '引用 P.57 · 块 2 原文准确',
+        R6: '词汇难度符合高中必修课标'
+      },
+      'What is left is a white skeleton that can still recover if the water cools again within a few weeks.',
+      READING_STEM_FIRST,
+      READING_OPTIONS_FIRST,
+      READING_ANCHOR,
+      3120,
+      5310
+    ),
+    judged(
+      3,
+      { R1: '1', R2: '1', R3: '1', R4: '1', R5: '1', R6: '1' },
+      {
+        R1: 'most directly 精准锁定直接恢复条件考点',
+        R2: 'A 项唯一对应 cools again within a few weeks，其余三项均被原文排除',
+        R3: '重构后的 B/C/D 均围绕白化伴随结果设障，有效检验因果区分能力',
+        R4: '四项条件维度清晰互斥',
+        R5: '解析与 P.57 · 块 2 原文逐句对齐',
+        R6: '课标词汇覆盖率完全合规'
+      },
+      'What is left is a white skeleton that can still recover if the water cools again within a few weeks.',
+      READING_STEM_FINAL,
+      READING_OPTIONS_FINAL,
+      READING_ANCHOR,
+      4180,
+      5620
+    )
   ],
   ledgerSeed: { totalReviewed: 0, falsePassCount: 0 },
   endDecision: 'pending'
@@ -278,19 +770,15 @@ const READING_PRESET = {
 
 const MCQ_PRESET = {
   id: 'false-pass-calibration',
-  label: '③ 假通过校准',
+  threadId: 'lg-thread-mcq-071',
+  label: '③ 单项选择 · 89 分假通过终审拦截',
   questionType: 'mcq',
   title: '单项选择 · Subjunctive Mood',
   stem: MCQ_STEM,
-  options: [
-    { key: 'A', text: 'studied' },
-    { key: 'B', text: 'studies' },
-    { key: 'C', text: 'had studied' },
-    { key: 'D', text: 'has studied' }
-  ],
+  options: MCQ_OPTIONS,
   answer: 'C',
   explanation:
-    '与过去事实相反的虚拟条件句：从句用 had + 过去分词，主句用 would have + 过去分词。题干里的 last term 和主句的 would have passed 一起把时间锁在过去。',
+    '本意考查与过去事实相反的虚拟条件句（if + had done, would have done）。Judge 对照课本例句给出 89 分通过，但人工复核发现 D 项 had been studying（过去完成进行时）在 last term 持续性语境下同样语法成立，属典型「高分双解假通过（False Pass）」，须人工驳回并沉淀至 BC-03 回归集。',
   chunks: [
     {
       page: 71,
@@ -324,8 +812,25 @@ const MCQ_PRESET = {
     }
   ],
   rounds: [
-    rulePass(1, MCQ_STEM, MCQ_ANCHOR),
-    judged(2, { accuracy: 94, uniqueness: 90, distractors: 88 }, MCQ_STEM, MCQ_ANCHOR, 2640, 3860)
+    rulePass(1, MCQ_STEM, MCQ_OPTIONS, MCQ_ANCHOR),
+    judged(
+      2,
+      { R1: '1', R2: '1', R3: '1', R4: '1', R5: '1', R6: 'unknown' },
+      {
+        R1: '命中过去虚拟条件句语法考点',
+        R2: 'Judge 按课本 had + done 模板判 C 成立（漏检 D 项进行体相容性）',
+        R3: '四项均为 study 不同时态体貌变形',
+        R4: 'Judge 误判互斥（未识别 had studied 与 had been studying 双解并存风险！）',
+        R5: '与 P.71 · 块 2 例句完全对应',
+        R6: '过去完成进行时虚拟属选修拓展语法边界，标 unknown 提醒人工复核'
+      },
+      'If she had studied harder last term, she would have passed the exam.',
+      MCQ_STEM,
+      MCQ_OPTIONS,
+      MCQ_ANCHOR,
+      2640,
+      3860
+    )
   ],
   ledgerSeed: { totalReviewed: 18, falsePassCount: 4 },
   endDecision: 'rejected'
@@ -354,8 +859,12 @@ function ledgerOf(totalReviewed, falsePassCount) {
 }
 
 export function createDemoState(preset) {
-  const chosen = typeof preset === 'string' || preset === undefined ? demoPreset(preset || PRESET_IDS[0]) : preset
+  const chosen =
+    typeof preset === 'string' || preset === undefined
+      ? demoPreset(preset || PRESET_IDS[0])
+      : preset
   return {
+    activeView: 'pipeline',
     preset: chosen,
     rounds: [],
     stage: chosen.rounds[0] ? chosen.rounds[0].stage : 'human-review',
@@ -363,16 +872,27 @@ export function createDemoState(preset) {
     inSampleBank: false,
     activeAnchor: null,
     focusTick: 0,
+    selectedNodeId: 'generate_draft',
     traceOpen: false,
     exhausted: false,
-    ledger: ledgerOf(chosen.ledgerSeed.totalReviewed, chosen.ledgerSeed.falsePassCount)
+    ledger: ledgerOf(chosen.ledgerSeed.totalReviewed, chosen.ledgerSeed.falsePassCount),
+    rubricVersion: 'v1',
+    selectedBadCaseId: BAD_CASES[0].id,
+    resolvedBadCaseIds: []
   }
 }
 
+function isRoundCleared(entry) {
+  return (
+    entry.stage === 'llm-judge' &&
+    entry.passed &&
+    entry.judgeScore !== null &&
+    entry.judgeScore >= QUALITY_THRESHOLD &&
+    (!entry.criticalZeroIds || entry.criticalZeroIds.length === 0)
+  )
+}
+
 function runGate(state) {
-  // At the review gate the pipeline is waiting for a person, not for another
-  // click on "run": re-running would either fake progress or spend tokens for
-  // nothing.
   if (state.stage === 'human-review') return state
 
   const script = state.preset.rounds
@@ -381,23 +901,24 @@ function runGate(state) {
 
   const scoredRounds = state.rounds.filter((entry) => entry.stage === 'llm-judge').length
   if (next.stage === 'llm-judge' && scoredRounds >= MAX_REVISION_ROUNDS) {
-    // The revision budget is spent: hand the case to a person instead of
-    // regenerating forever.
-    return { ...state, stage: 'human-review', exhausted: true }
+    return {
+      ...state,
+      stage: 'human-review',
+      exhausted: true,
+      selectedNodeId: 'human_interrupt'
+    }
   }
 
   const rounds = [...state.rounds, next]
   const following = script[rounds.length] || null
   const judges = rounds.filter((entry) => entry.stage === 'llm-judge').length
-  const scored = next.judgeScore !== null && next.judgeScore >= QUALITY_THRESHOLD
+  const cleared = isRoundCleared(next)
 
   let stage
   let exhausted = false
   if (next.stage === 'schema-rule') {
-    // A killed draft is fixed by the author, not by the judge: the next click
-    // runs whatever the corrected draft is scheduled for.
     stage = following ? following.stage : 'human-review'
-  } else if (scored) {
+  } else if (cleared) {
     stage = 'human-review'
   } else if (following && following.stage === 'llm-judge' && judges < MAX_REVISION_ROUNDS) {
     stage = 'llm-judge'
@@ -406,6 +927,8 @@ function runGate(state) {
     exhausted = true
   }
 
+  const selectedNodeId = next.stage === 'schema-rule' ? 'schema_rule_guard' : 'binary_rubric_judge'
+
   return {
     ...state,
     rounds,
@@ -413,12 +936,13 @@ function runGate(state) {
     exhausted,
     humanDecision: 'pending',
     activeAnchor: next.sourceAnchor,
-    focusTick: state.focusTick + 1
+    focusTick: state.focusTick + 1,
+    selectedNodeId
   }
 }
 
-function reviewLedger(ledger, score, decision) {
-  const falsePass = decision === 'rejected' && score !== null && score >= QUALITY_THRESHOLD ? 1 : 0
+function reviewLedger(ledger, clearedByJudge, decision) {
+  const falsePass = decision === 'rejected' && clearedByJudge ? 1 : 0
   return ledgerOf(ledger.totalReviewed + 1, ledger.falsePassCount + falsePass)
 }
 
@@ -426,17 +950,16 @@ function humanDecide(state, decision) {
   if (state.stage !== 'human-review' || state.humanDecision !== 'pending') return state
   const last = state.rounds[state.rounds.length - 1]
   if (!last) return state
-  const score = last.judgeScore
+  const cleared = isRoundCleared(last)
 
   if (decision === 'approve') {
-    // Only a question the judge already cleared can enter the sample bank, and
-    // only because a person said so.
-    if (score === null || score < QUALITY_THRESHOLD) return state
+    if (!cleared) return state
     return {
       ...state,
       humanDecision: 'approved',
       inSampleBank: true,
-      ledger: reviewLedger(state.ledger, score, 'approved')
+      selectedNodeId: 'sample_or_badcase',
+      ledger: reviewLedger(state.ledger, cleared, 'approved')
     }
   }
 
@@ -444,7 +967,8 @@ function humanDecide(state, decision) {
     ...state,
     humanDecision: 'rejected',
     inSampleBank: false,
-    ledger: reviewLedger(state.ledger, score, 'rejected')
+    selectedNodeId: 'sample_or_badcase',
+    ledger: reviewLedger(state.ledger, cleared, 'rejected')
   }
 }
 
@@ -454,32 +978,420 @@ function focusAnchor(state, page, chunkId) {
   return { ...state, activeAnchor: current, focusTick: state.focusTick + 1 }
 }
 
+/**
+ * Pillar A · 根据当前执行进度派生 LangGraph 7 个节点的实时状态与 Span 载荷。
+ */
+export function langGraphNodes(state) {
+  const preset = state.preset
+  const threadId = preset.threadId || `lg-thread-${preset.id}`
+  const rounds = state.rounds
+  const last = rounds.length ? rounds[rounds.length - 1] : null
+  const ruleRounds = rounds.filter((r) => r.stage === 'schema-rule')
+  const judgeRounds = rounds.filter((r) => r.stage === 'llm-judge')
+  const lastRule = ruleRounds.length ? ruleRounds[ruleRounds.length - 1] : null
+  const lastJudge = judgeRounds.length ? judgeRounds[judgeRounds.length - 1] : null
+  const hadFailedRound = rounds.some((r) => !r.passed)
+  const firstAnchor = preset.rounds[0] ? preset.rounds[0].sourceAnchor : { page: 1, chunkId: 'c1' }
+
+  // 1. retrieve_chunks
+  const retrieveNode = {
+    id: 'retrieve_chunks',
+    step: 1,
+    label: '知识检索',
+    role: '结构化切片召回',
+    status: 'completed',
+    executed: true,
+    badge: `Top-5 命中 · ${firstAnchor.chunkId}`,
+    span: {
+      spanId: `${threadId}:span-01-retrieve`,
+      threadId,
+      checkpointStatus: 'checkpoint_saved · step 1',
+      modelProfile: RETRIEVER_MODEL,
+      temperature: null,
+      latencyMs: 146,
+      promptTokens: 0,
+      completionTokens: 0,
+      inputSummary: `query="${preset.title}" · 按章节/段落 AST 边界检索教材知识库`,
+      outputSummary: `召回 ${preset.chunks.length} 个结构化教材切片，主证据锚点锁定 P.${firstAnchor.page} (${firstAnchor.chunkId})`
+    }
+  }
+
+  // 2. generate_draft
+  const generateNode = {
+    id: 'generate_draft',
+    step: 2,
+    label: '题目生成',
+    role: '生成模型出初稿',
+    status: 'completed',
+    executed: true,
+    badge: '初稿 v1 已产出',
+    span: {
+      spanId: `${threadId}:span-02-generate`,
+      threadId,
+      checkpointStatus: 'checkpoint_saved · step 2',
+      modelProfile: `${GENERATOR_MODEL}（生成侧模型）`,
+      temperature: 0.7,
+      latencyMs: 2680,
+      promptTokens: 1340,
+      completionTokens: 420,
+      inputSummary: `注入教材切片 ${firstAnchor.chunkId} + 题型 Schema（${preset.questionType}）+ 目标课标考点`,
+      outputSummary: `产出初稿 draft_v1（题干 + 4 选项 + 标答 ${preset.answer} + 解析），移交服务端硬规则门禁`
+    }
+  }
+
+  // 3. schema_rule_guard
+  let ruleStatus = 'pending'
+  let ruleBadge = '待校验'
+  let ruleInput = '等待执行第 1 轮服务端跨字段硬规则校验'
+  let ruleOutput = '尚未执行'
+  let ruleLatency = 0
+  let ruleCkpt = 'pending · before step 3'
+  if (rounds.length > 0) {
+    const blockedNow = last && last.stage === 'schema-rule' && !last.passed
+    ruleStatus = blockedNow ? 'blocked' : 'completed'
+    ruleLatency = lastRule ? lastRule.trace.latencyMs : 12
+    if (blockedNow) {
+      ruleBadge = '0 Token 硬拦'
+      ruleCkpt = 'short_circuited · 阻断送审 Judge'
+      ruleInput = `校验初稿 draft_v1（题型=${preset.questionType}，跨字段计数 + 选项去重 + 标答合法性）`
+      ruleOutput = `拦截 ${last.ruleErrors.length} 条硬规则违例：${last.ruleErrors.join('；')} → Judge Token = 0`
+    } else {
+      ruleBadge = '0 Token 通过'
+      ruleCkpt = 'checkpoint_saved · step 3'
+      ruleInput = `校验当前题稿结构完整性与跨字段确定性约束（${preset.questionType}）`
+      ruleOutput = '全部 Pydantic v2 + YAML 跨字段硬规则通过，耗费 0 Judge Token，放行进入二元评审'
+    }
+  }
+  const ruleNode = {
+    id: 'schema_rule_guard',
+    step: 3,
+    label: '服务端硬规则',
+    role: '0 Token 跨字段拦截',
+    status: ruleStatus,
+    executed: ruleStatus !== 'pending',
+    badge: ruleBadge,
+    span: {
+      spanId: `${threadId}:span-03-rule-guard`,
+      threadId,
+      checkpointStatus: ruleCkpt,
+      modelProfile: RULE_ENGINE,
+      temperature: null,
+      latencyMs: ruleLatency,
+      promptTokens: 0,
+      completionTokens: 0,
+      inputSummary: ruleInput,
+      outputSummary: ruleOutput
+    }
+  }
+
+  // 4. binary_rubric_judge
+  let judgeStatus = 'pending'
+  let judgeBadge = '待评审'
+  let judgeLatency = 0
+  let judgeIn = 0
+  let judgeOut = 0
+  let judgeCkpt = 'pending · before step 4'
+  let judgeInput = '等待服务端硬规则放行后启动跨模型二元 Rubric 评审'
+  let judgeOutput = '尚未执行'
+
+  if (last && last.stage === 'schema-rule' && !last.passed && !lastJudge) {
+    judgeStatus = 'short-circuited'
+    judgeBadge = '前置短路 · 0 tok'
+    judgeCkpt = 'skipped_by_rule_guard · 0 tokens'
+    judgeInput = '未接收题稿：上游 schema_rule_guard 已触发硬规则拦截'
+    judgeOutput = '短路跳过！未调用 deepseek-v4-flash，省下整轮评审开销（Judge Token = 0）'
+  } else if (lastJudge) {
+    judgeStatus = lastJudge.passed ? 'completed' : 'failed'
+    judgeBadge = `${lastJudge.judgeScore} 分 · ${lastJudge.passed ? '达标' : '触发回炉'}`
+    judgeLatency = lastJudge.trace.latencyMs
+    judgeIn = lastJudge.trace.tokensIn
+    judgeOut = lastJudge.trace.tokensOut
+    judgeCkpt = `checkpoint_saved · round ${lastJudge.round}`
+    const verdictPairs = Object.keys(lastJudge.rubricVerdicts || {})
+      .map((k) => `${k}=${lastJudge.rubricVerdicts[k]}`)
+      .join(', ')
+    judgeInput = `跨模型独立送审第 ${lastJudge.round} 轮题稿 + 教材切片 ${lastJudge.sourceAnchor.chunkId}（强制 Evidence-First JSON Schema）`
+    judgeOutput = `aligned_chunk="${lastJudge.sourceAnchor.chunkId}" · 判定 [${verdictPairs}] → 综合就绪分 ${lastJudge.judgeScore} 分`
+  }
+
+  const judgeNode = {
+    id: 'binary_rubric_judge',
+    step: 4,
+    label: '二元 Rubric 评审',
+    role: '跨模型 temp=0.0',
+    status: judgeStatus,
+    executed: judgeStatus !== 'pending',
+    badge: judgeBadge,
+    span: {
+      spanId: `${threadId}:span-04-binary-judge`,
+      threadId,
+      checkpointStatus: judgeCkpt,
+      modelProfile: `${JUDGE_MODEL}（独立评审侧）`,
+      temperature: 0.0,
+      latencyMs: judgeLatency,
+      promptTokens: judgeIn,
+      completionTokens: judgeOut,
+      inputSummary: judgeInput,
+      outputSummary: judgeOutput
+    }
+  }
+
+  // 5. revise_draft
+  let reviseStatus = 'pending'
+  let reviseBadge = '按需触发'
+  let reviseLatency = 0
+  let reviseIn = 0
+  let reviseOut = 0
+  let reviseCkpt = 'conditional_edge · 待定'
+  let reviseInput = '仅当硬规则报错或二元 Rubric 未达标时触发定向改版'
+  let reviseOutput = '尚未触发'
+
+  if (hadFailedRound && !state.exhausted) {
+    reviseStatus = 'completed'
+    const failedRule = ruleRounds.find((r) => !r.passed)
+    const failedJudge = judgeRounds.find((r) => !r.passed)
+    reviseLatency = 2190
+    reviseIn = 1560
+    reviseOut = 390
+    reviseCkpt = 'checkpoint_saved · revision_committed'
+    if (failedRule && !failedJudge) {
+      reviseBadge = '按规则错误修复'
+      reviseInput = `携带硬规则报错回炉：${failedRule.ruleErrors.join('；')}`
+      reviseOutput = '补齐第 4 空上下文并将重复选项 D 修正为 be carved，重新送审通过'
+    } else if (failedJudge) {
+      reviseBadge = '按 Rubric 诊断改版'
+      reviseInput = '携带二元诊断回炉：R2=unknown（题干问法宽泛）+ R3=0（干扰项缺因果混淆）'
+      reviseOutput = '题干收紧为 most directly decides，重写 B/C/D 为因果倒置干扰项'
+    }
+  } else if (state.stage === 'human-review' && !hadFailedRound) {
+    reviseStatus = 'skipped'
+    reviseBadge = '首轮直通跳过'
+    reviseCkpt = 'conditional_edge → human_interrupt (0 tok)'
+    reviseInput = '首轮即通过硬规则与二元 Rubric 门禁，无需进入回炉分支'
+    reviseOutput = '条件边直接路由至 human_interrupt 人工复核断点'
+  }
+
+  const reviseNode = {
+    id: 'revise_draft',
+    step: 5,
+    label: '带诊断回炉改版',
+    role: '定向修复未过项',
+    status: reviseStatus,
+    executed: reviseStatus !== 'pending',
+    badge: reviseBadge,
+    span: {
+      spanId: `${threadId}:span-05-revise`,
+      threadId,
+      checkpointStatus: reviseCkpt,
+      modelProfile: `${GENERATOR_MODEL}（诊断改版模式）`,
+      temperature: 0.3,
+      latencyMs: reviseLatency,
+      promptTokens: reviseIn,
+      completionTokens: reviseOut,
+      inputSummary: reviseInput,
+      outputSummary: reviseOutput
+    }
+  }
+
+  // 6. human_interrupt
+  let humanStatus = 'pending'
+  let humanBadge = '待挂起'
+  let humanCkpt = 'pending · interrupt_before=["sample_or_badcase"]'
+  let humanInput = '等待自动评测门禁收敛后挂起线程等待教研员终审'
+  let humanOutput = '尚未到达人工断点'
+
+  if (state.stage === 'human-review') {
+    if (state.humanDecision === 'pending') {
+      humanStatus = 'interrupted'
+      humanBadge = state.exhausted ? '轮次耗尽 · 待兜底' : '断点挂起待审'
+      humanCkpt = 'INTERRUPTED · state persisted in Checkpointer'
+      humanInput = `展示当前题稿 + 二元 Rubric 明细 + 原文切片 P.${last ? last.sourceAnchor.page : firstAnchor.page} 高亮对照`
+      humanOutput = '线程安全挂起：未收到教研员明确点击前，绝不自动写入黄金样本库'
+    } else {
+      humanStatus = 'completed'
+      humanBadge = state.humanDecision === 'approved' ? '教研已通过' : '教研已驳回'
+      humanCkpt = `resumed_from_checkpoint · decision=${state.humanDecision}`
+      humanInput = `教研员对照原文切片 P.${last ? last.sourceAnchor.page : firstAnchor.page} 终审裁决`
+      humanOutput =
+        state.humanDecision === 'approved'
+          ? '人工复核通过，恢复 LangGraph 线程流向黄金样本库入库节点'
+          : '人工复核驳回，恢复线程流向假通过台账与 BadCase 归因队列'
+    }
+  }
+
+  const humanNode = {
+    id: 'human_interrupt',
+    step: 6,
+    label: '人工复核断点',
+    role: 'interrupt_before 挂起',
+    status: humanStatus,
+    executed: humanStatus !== 'pending',
+    badge: humanBadge,
+    span: {
+      spanId: `${threadId}:span-06-human-interrupt`,
+      threadId,
+      checkpointStatus: humanCkpt,
+      modelProfile: 'Human-in-the-Loop 教研复核席',
+      temperature: null,
+      latencyMs: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      inputSummary: humanInput,
+      outputSummary: humanOutput
+    }
+  }
+
+  // 7. sample_or_badcase
+  let sinkStatus = 'pending'
+  let sinkBadge = '待终审分流'
+  let sinkCkpt = 'pending · terminal sink'
+  let sinkInput = '等待人工复核断点恢复后执行入库或归因记账'
+  let sinkOutput = '尚未执行'
+
+  if (state.humanDecision === 'approved') {
+    sinkStatus = 'completed'
+    sinkBadge = '已入黄金样本库'
+    sinkCkpt = 'thread_committed · sample_bank +1'
+    sinkInput = `接收人工通过裁决（就绪分 ${last ? last.judgeScore : ''} 分）`
+    sinkOutput = `写入黄金样本库，并更新线上复核台账（已复核 ${state.ledger.totalReviewed}/${REVIEW_TARGET}）`
+  } else if (state.humanDecision === 'rejected') {
+    sinkStatus = 'blocked'
+    sinkBadge = '假通过记账 / 归因'
+    sinkCkpt = 'thread_committed · false_pass_routed'
+    sinkInput = `接收人工驳回裁决（Judge 原判 ${last && last.judgeScore !== null ? `${last.judgeScore} 分` : '未达标'}）`
+    sinkOutput = `记入假通过监控池（${state.ledger.falsePassCount}/${FALSE_PASS_TARGET}），转入 BadCase 归因飞轮沉淀回归集`
+  }
+
+  const sinkNode = {
+    id: 'sample_or_badcase',
+    step: 7,
+    label: '样本入库 / BadCase 归因',
+    role: '终审分流回流',
+    status: sinkStatus,
+    executed: sinkStatus !== 'pending',
+    badge: sinkBadge,
+    span: {
+      spanId: `${threadId}:span-07-sink`,
+      threadId,
+      checkpointStatus: sinkCkpt,
+      modelProfile: 'SampleBank & BadCase Router',
+      temperature: null,
+      latencyMs: state.humanDecision === 'pending' ? 0 : 18,
+      promptTokens: 0,
+      completionTokens: 0,
+      inputSummary: sinkInput,
+      outputSummary: sinkOutput
+    }
+  }
+
+  return [retrieveNode, generateNode, ruleNode, judgeNode, reviseNode, humanNode, sinkNode]
+}
+
+export function selectedNodeSpan(state) {
+  const nodes = langGraphNodes(state)
+  const found = nodes.find((node) => node.id === state.selectedNodeId && node.executed)
+  return found || nodes.find((node) => node.executed) || nodes[0]
+}
+
+export function currentRubricCalibration(state) {
+  return (
+    RUBRIC_CALIBRATION_VERSIONS.find((item) => item.version === state.rubricVersion) ||
+    RUBRIC_CALIBRATION_VERSIONS[0]
+  )
+}
+
+export function regressionSuiteStats(state) {
+  const resolvedSet = new Set(state.resolvedBadCaseIds)
+  const byCategory = {}
+  for (const item of BAD_CASES) {
+    if (!byCategory[item.category]) {
+      byCategory[item.category] = { total: 0, resolved: 0 }
+    }
+    byCategory[item.category].total += 1
+    if (resolvedSet.has(item.id)) byCategory[item.category].resolved += 1
+  }
+  return {
+    baseCount: REGRESSION_BASE_COUNT,
+    addedCount: resolvedSet.size,
+    totalCount: REGRESSION_BASE_COUNT + resolvedSet.size,
+    allResolved: resolvedSet.size === BAD_CASES.length,
+    byCategory
+  }
+}
+
 export function reduceDemo(state, action) {
   switch (action.type) {
-    case 'selectPreset':
-      return createDemoState(action.presetId)
-    case 'reset':
-      return createDemoState(state.preset)
+    case 'selectPreset': {
+      const fresh = createDemoState(action.presetId)
+      return { ...fresh, activeView: state.activeView }
+    }
+    case 'switchView': {
+      const valid = WORKSPACE_VIEWS.some((item) => item.id === action.view)
+      if (!valid || action.view === state.activeView) return state
+      return { ...state, activeView: action.view }
+    }
+    case 'reset': {
+      const fresh = createDemoState(state.preset)
+      return { ...fresh, activeView: state.activeView }
+    }
     case 'runGate':
       return runGate(state)
     case 'focusAnchor':
       return focusAnchor(state, action.page, action.chunkId)
+    case 'selectNode': {
+      const node = langGraphNodes(state).find((item) => item.id === action.nodeId)
+      if (!node || !node.executed || node.id === state.selectedNodeId) return state
+      return { ...state, selectedNodeId: node.id }
+    }
     case 'humanDecide':
       return humanDecide(state, action.decision)
+    case 'recordExtraReview': {
+      if (state.humanDecision === 'pending') return state
+      return {
+        ...state,
+        ledger: ledgerOf(state.ledger.totalReviewed + 1, state.ledger.falsePassCount)
+      }
+    }
     case 'toggleTrace':
       return { ...state, traceOpen: !state.traceOpen }
+    case 'selectRubricVersion': {
+      const exists = RUBRIC_CALIBRATION_VERSIONS.some((item) => item.version === action.version)
+      if (!exists || action.version === state.rubricVersion) return state
+      return { ...state, rubricVersion: action.version }
+    }
+    case 'advanceRubricVersion': {
+      const index = RUBRIC_CALIBRATION_VERSIONS.findIndex(
+        (item) => item.version === state.rubricVersion
+      )
+      if (index === -1 || index >= RUBRIC_CALIBRATION_VERSIONS.length - 1) return state
+      return { ...state, rubricVersion: RUBRIC_CALIBRATION_VERSIONS[index + 1].version }
+    }
+    case 'selectBadCase': {
+      const exists = BAD_CASES.some((item) => item.id === action.badCaseId)
+      if (!exists || action.badCaseId === state.selectedBadCaseId) return state
+      return { ...state, selectedBadCaseId: action.badCaseId }
+    }
+    case 'resolveBadCase': {
+      const exists = BAD_CASES.some((item) => item.id === action.badCaseId)
+      if (!exists || state.resolvedBadCaseIds.includes(action.badCaseId)) return state
+      return {
+        ...state,
+        selectedBadCaseId: action.badCaseId,
+        resolvedBadCaseIds: [...state.resolvedBadCaseIds, action.badCaseId]
+      }
+    }
     default:
       return state
   }
 }
 
-/** True once the preset has reached the state its script ends on. */
+/** 当前预设是否已走到预设脚本定义的终点状态。 */
 export function isFinished(state) {
   if (state.stage !== 'human-review') return false
   return state.humanDecision !== 'pending' || state.preset.endDecision === 'pending'
 }
 
-/** The vertical rail: what each gate did, and in which round. */
+/** 左侧三关纵向进度轨。 */
 export function gateRail(state) {
   const rounds = state.rounds
   const last = rounds.length ? rounds[rounds.length - 1] : null
@@ -497,7 +1409,7 @@ export function gateRail(state) {
     if (last.ruleErrors.length > 0) {
       rule.status = 'failed'
       rule.round = last.round
-      rule.detail = `${last.ruleErrors.length} 条确定性规则违例，未调用模型`
+      rule.detail = `${last.ruleErrors.length} 条确定性规则违例，0 Judge Token`
     } else {
       rule.status = 'passed'
       rule.round = last.round
@@ -515,7 +1427,12 @@ export function gateRail(state) {
   if (lastJudge) {
     judge.status = lastJudge.passed ? 'passed' : 'failed'
     judge.round = lastJudge.round
-    judge.detail = `${lastJudge.judgeScore} 分 · 阈值 ${QUALITY_THRESHOLD}`
+    const unknownCnt = lastJudge.rubricVerdicts
+      ? Object.values(lastJudge.rubricVerdicts).filter((v) => v === 'unknown').length
+      : 0
+    judge.detail = `${lastJudge.judgeScore} 分 · 阈值 ${QUALITY_THRESHOLD}${
+      unknownCnt > 0 ? `（含 ${unknownCnt} 项 unknown）` : ''
+    }`
   }
 
   const human = {
@@ -529,23 +1446,24 @@ export function gateRail(state) {
     human.round = last ? last.round : null
     if (state.humanDecision === 'approved') {
       human.status = 'passed'
-      human.detail = '人工通过，已入样本库'
+      human.detail = '人工通过，已入黄金样本库'
     } else if (state.humanDecision === 'rejected') {
       human.status = 'failed'
-      human.detail = '人工驳回'
+      human.detail = '人工驳回，记入假通过 / 归因'
     } else {
-      human.detail = state.exhausted ? '改版轮次用尽，等待人工兜底' : '等待人工决策'
+      human.detail = state.exhausted ? '改版轮次用尽，等待人工兜底' : '断点挂起，等待人工决策'
     }
   }
 
   return [rule, judge, human]
 }
 
-/** The round log, with the score delta against the previous judged round. */
+/** 逐轮评测卡片（含二元 Rubric 逐项判定、证据摘录与改版分差）。 */
 export function roundCards(state) {
   let previous = null
   return state.rounds.map((entry) => {
-    const delta = entry.judgeScore !== null && previous !== null ? entry.judgeScore - previous : null
+    const delta =
+      entry.judgeScore !== null && previous !== null ? entry.judgeScore - previous : null
     if (entry.judgeScore !== null) previous = entry.judgeScore
     return {
       round: entry.round,
@@ -554,6 +1472,10 @@ export function roundCards(state) {
       ruleErrors: entry.ruleErrors,
       judgeScore: entry.judgeScore,
       judgeBreakdown: entry.judgeBreakdown,
+      rubricVerdicts: entry.rubricVerdicts,
+      rubricNotes: entry.rubricNotes,
+      criticalZeroIds: entry.criticalZeroIds || [],
+      evidenceQuote: entry.evidenceQuote,
       tokensUsed: entry.tokensUsed,
       revisionDelta: delta
     }
@@ -564,11 +1486,12 @@ export function estimateCost(tokensUsed) {
   return (tokensUsed / 1000) * COST_PER_1K_TOKENS
 }
 
-/** Per-round cost breakdown for the collapsible Trace panel. */
+/** 每轮调用成本明细（供底部 Trace 成本折叠表消费）。 */
 export function traceRows(state) {
   return state.rounds.map((entry) => ({
     round: entry.round,
     model: entry.trace.model,
+    temperature: entry.trace.temperature,
     tokensIn: entry.trace.tokensIn,
     tokensOut: entry.trace.tokensOut,
     latencyMs: entry.trace.latencyMs,
@@ -583,7 +1506,7 @@ export function anchorLabel(preset, anchor) {
   return chunk ? chunk.label : `P.${anchor.page} · ${anchor.chunkId}`
 }
 
-/** Clicks needed to reach the preset's end state, counting the preset tab. */
+/** 走到预设终态所需总点击数（含切换到该预设的首次点击）。 */
 export function clicksToEnd(preset) {
   let state = createDemoState(preset)
   let clicks = 1
@@ -603,14 +1526,15 @@ export function clicksToEnd(preset) {
 }
 
 /**
- * Everything the page must repeat verbatim: the action names it dispatches, the
- * invariant sentences it prints, the thresholds it quotes, and the per-round
- * facts it renders. `mirror.test.ts` re-derives this from the machine and
- * requires the shipped copy to match.
+ * 供 `mirror.test.ts` 校验页面文案与状态机数值零漂移的导出契约。
  */
 export function demoContract() {
   return {
+    projectName: PROJECT_NAME,
+    workbenchName: WORKBENCH_NAME,
     actions: ACTION_NAMES.slice(),
+    views: WORKSPACE_VIEWS.map((view) => view.id),
+    nodes: LANGGRAPH_NODE_SPECS.map((node) => node.id),
     invariants: INVARIANTS.slice(),
     gates: Object.keys(GATE_LABELS).map((stage) => ({ stage, label: GATE_LABELS[stage] })),
     thresholds: {
@@ -618,12 +1542,26 @@ export function demoContract() {
       maxRevisionRounds: MAX_REVISION_ROUNDS,
       reviewedTarget: REVIEW_TARGET,
       falsePassTarget: FALSE_PASS_TARGET,
-      rubric: {
-        accuracy: RUBRIC_WEIGHTS.accuracy,
-        uniqueness: RUBRIC_WEIGHTS.uniqueness,
-        distractors: RUBRIC_WEIGHTS.distractors
-      }
+      calibrationSetSize: CALIBRATION_SET_SIZE,
+      iaaThreshold: IAA_THRESHOLD,
+      humanAiThreshold: HUMAN_AI_THRESHOLD,
+      regressionBaseCount: REGRESSION_BASE_COUNT,
+      rubric: { ...RUBRIC_WEIGHTS }
     },
+    binaryRubrics: BINARY_RUBRIC_ITEMS.map((item) => ({
+      id: item.id,
+      dimensionId: item.dimensionId,
+      weight: item.weight,
+      critical: item.critical
+    })),
+    calibrationVersions: RUBRIC_CALIBRATION_VERSIONS.map((ver) => ({
+      version: ver.version,
+      unknownRate: ver.unknownRate,
+      iaaRate: ver.iaaRate,
+      humanAiRate: ver.humanAiRate,
+      gateReady: ver.gateReady
+    })),
+    badCases: BAD_CASES.map((bc) => ({ id: bc.id, category: bc.category })),
     presets: PRESET_IDS.map((id) => {
       const preset = demoPreset(id)
       return {

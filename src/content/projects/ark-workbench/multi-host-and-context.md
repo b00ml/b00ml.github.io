@@ -12,16 +12,52 @@ summary: 单进程、五个渠道、两层预算、一个乐观锁
 
 ## 一个进程，两个协议面
 
-```
-ark-obsidian   TS 插件：聊天 / 历史 / 记忆 / 设置 四个面板 + 插件视图
-      │ HTTP
-ark serve      一个 Python 常驻进程，127.0.0.1:8650
-   ├── /mcp    MCP Streamable HTTP：Core 工具 + Ark 插件工具，全部在这里发布
-   ├── /v1     OpenAI 兼容 SSE（/v1/chat/completions、/v1/models）+ 动作确认（/v1/actions/<id>）
-   │            + 插件界面接口（/v1/plugins/<name>/...）
-   ├── ark-agent   agent 回环、Skill 加载、外部写动作确认、调度器、插件宿主
-   └── ark-core    vault / context / memory / history 四个子系统 + MCP 工具
-```
+<figure class="fig" data-anim>
+<svg viewBox="0 0 720 432" role="img" aria-label="ark-obsidian 经 HTTP 连接单进程 ark serve 的 /mcp 与 /v1 两个协议面，ark-agent 仅经 MCP 客户端接口调用 ark-core">
+<defs>
+<marker id="ah-mh1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--primary))"/></marker>
+</defs>
+<g class="rise" style="--at:0s">
+<rect class="s-node" x="24" y="14" width="672" height="64" rx="10"/>
+<text class="t-ink" x="360" y="41" text-anchor="middle">ark-obsidian · TS 桌面插件</text>
+<text class="t-dim" x="360" y="67" text-anchor="middle">聊天 / 历史 / 记忆 / 设置 四面板 + 插件视图</text>
+</g>
+<g class="rise" style="--at:.25s">
+<path class="s-acc draw" pathLength="1" style="--at:.25s" d="M130 78V148" marker-end="url(#ah-mh1)"/>
+<path class="s-acc draw" pathLength="1" style="--at:.25s" d="M590 78V148" marker-end="url(#ah-mh1)"/>
+<text class="t-dim" x="360" y="99" text-anchor="middle">HTTP · Bearer Token</text>
+<rect class="s-dim" x="24" y="112" width="672" height="278" rx="12"/>
+<text class="t-acc" x="360" y="138" text-anchor="middle">ark serve · 单进程 127.0.0.1:8650</text>
+</g>
+<g class="rise" style="--at:.5s">
+<rect class="s-node-acc" x="44" y="152" width="290" height="96" rx="10"/>
+<text class="t-acc" x="189" y="180" text-anchor="middle">/mcp · 工具协议面</text>
+<text class="t-dim" x="189" y="206" text-anchor="middle">Streamable HTTP</text>
+<text class="t-dim" x="189" y="232" text-anchor="middle">Core + 插件工具发布</text>
+<rect class="s-node" x="386" y="152" width="290" height="96" rx="10"/>
+<text class="t-ink" x="531" y="180" text-anchor="middle">/v1 · 会话协议面</text>
+<text class="t-dim" x="531" y="206" text-anchor="middle">OpenAI 兼容 SSE</text>
+<text class="t-dim" x="531" y="232" text-anchor="middle">动作确认 · 插件接口</text>
+</g>
+<g class="rise" style="--at:.8s">
+<path class="s-acc draw" pathLength="1" style="--at:.8s" d="M189 248V276" marker-end="url(#ah-mh1)"/>
+<path class="s-acc draw" pathLength="1" style="--at:.8s" d="M531 248V276" marker-end="url(#ah-mh1)"/>
+<rect class="s-node-acc" x="44" y="280" width="290" height="96" rx="10"/>
+<text class="t-acc" x="189" y="308" text-anchor="middle">ark-core</text>
+<text class="t-dim" x="189" y="334" text-anchor="middle">vault · context</text>
+<text class="t-dim" x="189" y="360" text-anchor="middle">memory · history</text>
+<rect class="s-node" x="386" y="280" width="290" height="96" rx="10"/>
+<text class="t-ink" x="531" y="308" text-anchor="middle">ark-agent</text>
+<text class="t-dim" x="531" y="334" text-anchor="middle">回环 · Skill · 调度</text>
+<text class="t-dim" x="531" y="360" text-anchor="middle">插件宿主 · 外发确认</text>
+<path class="s-acc draw" pathLength="1" style="--at:1.05s" d="M386 328H338" marker-end="url(#ah-mh1)"/>
+</g>
+<g class="fade" style="--at:1.3s">
+<text class="t-dim" x="360" y="418" text-anchor="middle">同进程 ark-agent 也只经 MCP 调 ark-core</text>
+</g>
+</svg>
+<figcaption><span><b>图 1</b>一个常驻进程同时暴露 `/mcp` 与 `/v1` 两个协议面；自带 `ark-agent` 与外部宿主走同一套 MCP 接口，不直接 import 内核模块。</span><button class="replay" type="button">重播</button></figcaption>
+</figure>
 
 三条容易被忽略的约束：
 
@@ -29,16 +65,51 @@ ark serve      一个 Python 常驻进程，127.0.0.1:8650
 - **扩展是独立子进程**，MCP stdio，只被 Core 连接，宿主不直接连。Core 拉起它们后把工具一并发布到 `/mcp`，调用原样转发。扩展不写 Vault，只返回素材，写由调用方经 Core 完成。
 - **只有一个端口、一个 token、一个开机自启项。** 实例锁 `.ark/core.lock` 挡住同机重复启动；HTTP 保留 Host / Origin 校验，防 DNS rebinding。端口只绑本机也照样要 Bearer token——本机其他进程和浏览器页面也能访问 `127.0.0.1`。
 
-```
-只读目录 raw/  ──路径守卫──┐
-                           ▼
-扩展子进程  ark-bili / ark-article  ──MCP stdio──►  ark-core  ◄──MCP──  ark-agent
-   （只返回素材，不写 Vault）                        │                    （自家回环）
-                                                Vault Markdown        ▲
-                                                + Git 快照            │ /mcp
-                                                                     │
-        Obsidian / Claude Code / DSH / AstrBot(QQ) / 邮件 MCP ────────┘
-```
+<figure class="fig" data-anim>
+<svg viewBox="0 0 720 422" role="img" aria-label="只读目录守卫、采集扩展子进程、ark-agent 与多端渠道围绕 ark-core 和 Vault 真源的读写拓扑">
+<defs>
+<marker id="ah-mh2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--primary))"/></marker>
+<marker id="ah-mh2-dim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--muted-foreground))"/></marker>
+</defs>
+<g class="rise" style="--at:0s">
+<rect class="s-node" x="22" y="16" width="316" height="90" rx="10"/>
+<text class="t-ink" x="180" y="44" text-anchor="middle">只读目录 raw/</text>
+<text class="t-dim" x="180" y="70" text-anchor="middle">路径守卫强制拒写</text>
+<text class="t-dim" x="180" y="94" text-anchor="middle">禁改 .git · .ark · .env</text>
+<rect class="s-node" x="382" y="16" width="316" height="90" rx="10"/>
+<text class="t-ink" x="540" y="44" text-anchor="middle">扩展子进程（stdio）</text>
+<text class="t-dim" x="540" y="70" text-anchor="middle">ark-bili · ark-article</text>
+<text class="t-dim" x="540" y="94" text-anchor="middle">只返回素材，不写 Vault</text>
+</g>
+<g class="rise" style="--at:.35s">
+<path class="s-dim" d="M180 106V132H320V154" marker-end="url(#ah-mh2-dim)"/>
+<path class="s-acc draw" pathLength="1" style="--at:.35s" d="M540 106V132H400V154" marker-end="url(#ah-mh2)"/>
+<rect class="s-node" x="22" y="158" width="204" height="96" rx="10"/>
+<text class="t-ink" x="124" y="186" text-anchor="middle">ark-agent</text>
+<text class="t-dim" x="124" y="212" text-anchor="middle">自家回环</text>
+<text class="t-dim" x="124" y="238" text-anchor="middle">经 MCP 调内核</text>
+<path class="s-acc draw" pathLength="1" style="--at:.55s" d="M226 206H254" marker-end="url(#ah-mh2)"/>
+<rect class="s-node-acc" x="258" y="158" width="204" height="96" rx="10"/>
+<text class="t-acc" x="360" y="186" text-anchor="middle">ark-core</text>
+<text class="t-dim" x="360" y="212" text-anchor="middle">唯一写入入口</text>
+<text class="t-dim" x="360" y="238" text-anchor="middle">/mcp 统一发布</text>
+<path class="s-acc draw" pathLength="1" style="--at:.75s" d="M462 206H490" marker-end="url(#ah-mh2)"/>
+<rect class="s-node" x="494" y="158" width="204" height="96" rx="10"/>
+<text class="t-ink" x="596" y="186" text-anchor="middle">Vault 真源</text>
+<text class="t-dim" x="596" y="212" text-anchor="middle">Markdown 笔记</text>
+<text class="t-dim" x="596" y="238" text-anchor="middle">+ Git 单快照</text>
+</g>
+<g class="rise" style="--at:.95s">
+<path class="s-acc draw" pathLength="1" style="--at:.95s" d="M360 298V258" marker-end="url(#ah-mh2)"/>
+<text class="t-acc" x="374" y="284" text-anchor="start">/mcp</text>
+<rect class="s-node" x="22" y="298" width="676" height="110" rx="10"/>
+<text class="t-ink" x="360" y="326" text-anchor="middle">外部宿主与多端渠道（共用同一入口）</text>
+<text class="t-dim" x="360" y="356" text-anchor="middle">Obsidian · Claude Code · DSH</text>
+<text class="t-dim" x="360" y="386" text-anchor="middle">AstrBot(QQ) · 邮件 MCP</text>
+</g>
+</svg>
+<figcaption><span><b>图 2</b>只读目录守卫与采集扩展全部收敛到 `ark-core`；所有宿主只连 `/mcp`，Vault 写入与 Git 快照只走这一处。</span><button class="replay" type="button">重播</button></figcaption>
+</figure>
 
 ## 五个渠道，三种证据等级
 
@@ -48,13 +119,14 @@ ark serve      一个 Python 常驻进程，127.0.0.1:8650
 
 ### 已完成实机 / 自动验收
 
-这三条能拿出具体版本、具体日期、具体步骤：
+这四条渠道能拿出具体版本、具体机制与真机验证步骤：
 
 | 渠道 | 状态 | 证据 |
 | --- | --- | --- |
 | **Claude Code** | 已支持（MCP 接入） | 2026-11-01，Claude 桌面端 Code 标签，Claude Code 2.1.304 + Opus 5.5，经 `mcp-remote` 0.15.2 桥接 stdio，用户级 `ask` Skill，四步通过：提问、引用、写笔记、撤销 |
 | **DSH** | 已支持（MCP 接入） | 2026-11-01，桌面应用 44.7.0 内置 dsh（DSH 0.1.0-rc.7）、模型 `mx/deepseek-flash`，经 `desktop` profile 的补丁层，同样四步通过 |
 | **Obsidian 面板** | 已人工验收 | 2026-11-16，8 步全过：总结当前笔记后不满意就撤销、一轮对话的多次写入只产生一个快照、记忆面板确认与驳回推断、调用不在免确认名单里的工具时出现确认卡且拒绝后不执行 |
+| **手机 QQ（经 AstrBot）** | 已实机验收 | AstrBot 用 `streamable_http` 连接 Core 的 `/mcp`（`Authorization: Bearer <ARK_TOKEN>`），无需另起 stdio 进程，人格提示词由共用的 `SKILL.md` 正文拼接生成；已完成真实 QQ 私聊共享 `Collect` 链接采集与 `Tasks` 任务查询/创建/拆分闭环验收 |
 
 再加一条自动化验收：调度器 + 插件宿主 + 任务看板，2026-11-18 由一条真实 `ark serve` 的场景用例跑通「创建 → 看板编辑 → 到点提醒 → 停服补发 → 外部 MCP 查询 → 停用回归」，全仓 658 例同时运行。
 
@@ -64,14 +136,13 @@ ark serve      一个 Python 常驻进程，127.0.0.1:8650
 
 ### 标准 MCP 协议扩展接入（未实机验收）
 
-下面两个渠道走的是**同一套标准机制**，机制本身是稳的，但**没有在真实服务上跑过**，所以只写接入方式与动作拦截边界，不写「通过」：
+下面这条邮件渠道走的是**同一套标准机制**，机制本身是稳的，但**尚未在真实邮件服务上跑完验收**，所以只写接入方式与动作拦截边界，不写「通过」：
 
 | 渠道 | 接入方式（已按官方/源码核对） | 边界 | 证据等级 |
 | --- | --- | --- | --- |
-| **手机 QQ（经 AstrBot）** | AstrBot 用 `streamable_http` 连接 Core 的 `/mcp`，`headers` 带 `Authorization: Bearer <ARK_TOKEN>`；AstrBot 只配这一个 server，采集扩展的工具由 Core 转发发布，不需要 AstrBot 起 stdio 进程。Skill 不走 AstrBot 原生加载（依赖默认关闭的 Computer Use），人格提示词由 `ark-protocol`、`ask`、`summarize` 三份 `SKILL.md` 正文拼接生成，Skill 仍是唯一内容来源，测试检查两者一致 | 发信等外部动作在 Ark 侧照旧要确认；QQ 消息的收发由 AstrBot 负责，Ark 不写网关 | 示例对照 AstrBot v4.29.4 源码核对过，**尚未**在真实 AstrBot 上运行；清单见 `docs/acceptance-astrbot.md` |
-| **邮件（经腾讯 AgentMail MCP）** | 设计里对邮件只有一条原则：**优先选用现成的 IMAP/SMTP MCP server**，接入前先看来源和它要的权限；腾讯 AgentMail 属于这条路径 | 收信作为采集来源（只返回素材）；发信是外部写动作，属五条硬约束第 3 条，执行前必须确认，拒绝也回填给模型 | 仓库内**没有**针对 AgentMail 的专门接入配置记录，属标准 MCP 扩展接入方向 |
+| **邮件（经腾讯 AgentMail MCP）** | 设计里对邮件只有一条原则：**优先选用现成的 IMAP/SMTP MCP server**，接入前先看来源和它要的权限；腾讯 AgentMail 属于这条路径 | 收信作为采集来源（只返回素材）；发信是外部写动作，属五条硬约束第 3 条，执行前必须确认，拒绝也回填给模型 | 仓库内**没有**针对 AgentMail 的专门实机验收记录，属标准 MCP 扩展接入方向 |
 
-**为什么这条边界要写这么啰嗦。** 把「照协议接得进去」和「在真机上跑通过」混为一谈，是最容易被一轮追问打穿的地方——问一句「你用的 AstrBot 是哪个版本，四步验收的记录在哪」就露底。反过来，把两侧分开写，被追问时答的是「这两个走标准 MCP，机制和桌面端一样，但我没在真机上验过，清单在这里」，这句是真话，也经得起再问。
+**为什么这条边界要写这么啰嗦。** 把「照协议接得进去」和「在真机上跑通过」混为一谈，是最容易被一轮追问打穿的地方——问一句「这路外发邮件在哪个客户端验过、验收记录在哪」就露底。反过来，把已真机跑通的四条（Obsidian / Claude Code / DSH / AstrBot QQ）和仍在协议扩展层的邮件分开写，被追问时句句有据。
 
 ## 上下文：两层预算，不是一个大窗口
 

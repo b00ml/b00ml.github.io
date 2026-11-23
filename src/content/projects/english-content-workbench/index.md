@@ -1,44 +1,39 @@
 ---
-title: 英语内容生产工作台
-description: 一个把生成、自动质检、人工复核和来源证据串起来的英语出题工作台：每道题都带答案、解析和能点回原文的来源片段。
+title: 英语教研内容生产工作台
+description: 基于 LangGraph 编排的英语教研内容生产线：打通生成、跨字段硬规则、二元 Rubric 评审、人机一致率校准与 Bad Case 归因迭代的全链路观测与评测闭环。
 pubDate: 2026-10-18
+updatedDate: 2026-11-23
 status: shipped
 role: 产品与实现
 period: '2026'
 order: 3
 highlights:
-  - 七阶段流水线 · 1,154 项测试（63 项真实 PG 集成）· 84.05% 覆盖率
-  - 规则前置 → 双轮 Judge → 人工终审三层质检
-  - Outbox 投递 + 三层幂等 · 44/44 原文页码回溯
-stack: [出题流水线, 规则质检, 人工审核]
+  - LangGraph 全链路节点 Trace 观测 · 1,154 项测试（84.05% 覆盖率）
+  - 指标拆解 + Rubric 二元化（0/1/unknown）· 人人 ≥85% / 人机 ≥90% 校准
+  - 跨字段规则前置短路 + Bad Case 归因回流 · Outbox 三层幂等恢复
+stack: [LangGraph, 观测与评测, Rubric 二元化, 教研工作流]
 links:
-  - label: 交互演示
+  - label: 观测与评测演示
     href: /projects/english-content-workbench/demo/
   - label: 七阶段流水线图
     href: /diagrams/english-pipeline.html
   - label: 开源仓库
     href: https://github.com/b00ml/english-edit-agent-platform
-  - label: 三层质检闭环
-    href: /projects/english-content-workbench/quality-loop
-  - label: 跨系统一致性
-    href: /projects/english-content-workbench/reliability
-  - label: 原文回溯检索
-    href: /projects/english-content-workbench/rag
 ---
 
 ## 它能完整办成的一件事
 
-把一份英语教材丢进去，出来一批题：单选、完形、阅读。每道题带着答案、解析，和一个能点回原文的片段——那一页、那一块。规则先拒掉能确定的错，模型再判语感、干扰项质量、解析够不够，人看最后一眼，通过的那批存成样本。
+把一份英语教材丢进去，经 LangGraph 状态机跑出单选、完形、阅读三类教研题目——每道题都带着答案、解析，和一个能点回教材原文的页码切片。系统不靠一句笼统的 1–5 分主观 Prompt 放行，而是把「题目质量」下钻拆解为多维度的**二元化原子判据（`1 / 0 / unknown`）**，配合服务端确定性硬规则前置短路、人机一致率校准门禁与 Bad Case 归因回流，守住整条生产线的可信度。
 
-它要回答的不是「能不能生成」，而是「生成之后，谁凭什么信它对」。
+它要回答的不是「能不能生成」，而是「生成之后，凭什么信它对、判错了怎么校准迭代」。
 
-> [打开交互演示](/projects/english-content-workbench/demo/)：免安装、免登录，无需任何后端或密钥。演示用合成教材与预置轮次确定性回放，浏览器内不调用任何模型；刷新即回到初始预设。
+> [打开 LangGraph 观测与评测闭环演示](/projects/english-content-workbench/demo/)：免安装、免登录，无需任何后端或密钥。在浏览器里直接查看 LangGraph 节点级 Span 轨迹、独立 Judge 模型（`temperature=0` + 先证据后判定）配置、指标下钻与 `0/1/unknown` 二元 Rubric、用 `unknown` 占比反查歧义直至人人/人机一致率越过 `85% / 90%` 阈值的迭代过程，以及 Bad Case 归因回流。
 
 ![内容生成界面：按知识点、题型、难度和数量批量出题，生成结果带结构化校验与本次参数。](../../../assets/english-content-workbench/generation.webp)
 
 _图 1：一次批量生成。参数、题型和数量在上，结果是带答案与解析的成稿，下方保留这次生成的知识来源。点击图片可以放大。_
 
-<iframe src="/diagrams/english-pipeline.html" title="英语内容生产工作台七阶段流水线与恢复边界（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
+<iframe src="/diagrams/english-pipeline.html" title="英语教研内容生产工作台七阶段流水线与恢复边界（可交互）" loading="lazy" style="width:100%;height:640px;border:1px solid #8884;border-radius:8px;"></iframe>
 
 _图 2：七阶段流水线与恢复边界（交互版）。悬停节点与连线可单独聚焦那一步，右上角可切换深浅主题；下面那条虚线带画的是请求落 Outbox 之后的投递、租约与周期对账。[在新窗口打开](/diagrams/english-pipeline.html)可放大阅读。_
 

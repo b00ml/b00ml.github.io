@@ -10,10 +10,10 @@
  * Design rules encoded here (Ark `docs/design.md` v0.8):
  *
  * 1. Anything Git can undo is written without a dialog. Vault writes (organise a
- *    note, Collect intake, task board edits) apply immediately and append exactly
- *    one snapshot carrying its source tag. `undoSnapshot` puts the exact previous
- *    bytes back and marks that snapshot reverted; the history list itself is
- *    never rewritten.
+ *    note, Collect intake, task board edits, manual task review generation) apply
+ *    immediately and append exactly one snapshot carrying its source tag.
+ *    `undoSnapshot` puts the exact previous bytes back and marks that snapshot
+ *    reverted; the history list itself is never rewritten.
  * 2. External, irreversible writes stop at a confirmation. Mail via Tencent
  *    AgentMail always becomes a `pendingAction` with `status: 'pending'`; only an
  *    explicit approve sends it, and a reject backfills the refusal with no
@@ -25,7 +25,8 @@
  *    `baseRev` never overwrites: it lands in `thread.pendingConflicts`.
  *
  * Everything is pure and deterministic (no Date.now, no Math.random — a
- * monotonic `clock` instead), so a scenario replays to an identical state.
+ * monotonic `clock` plus fixed `ARK_TASKS_NOW` anchor), so a scenario replays to
+ * an identical state across any timezone.
  */
 
 export const MEMORY_INFERRED_PREFIX = '[推测，未确认]'
@@ -37,6 +38,19 @@ export const STALE_BASE_REV = 'rev-4b1d7c02'
 export const CURRENT_REV = '@current'
 
 export const ARK_BUDGET = { resident: 2000, onDemand: 4000 }
+
+/** Deterministic reference instant (2026-W47 Saturday) for V7 Tasks board & review views. */
+export const ARK_TASKS_NOW = '2026-11-21T15:30:00+08:00'
+
+export const ARK_TASKS_WEEK_DATES = [
+  '2026-11-16',
+  '2026-11-17',
+  '2026-11-18',
+  '2026-11-19',
+  '2026-11-20',
+  '2026-11-21',
+  '2026-11-22'
+]
 
 export const ARK_HOSTS = ['obsidian', 'claude-code', 'dsh', 'astrbot-qq', 'agentmail']
 
@@ -53,7 +67,9 @@ export const ARK_ACTION_TYPES = [
   'collect-submit',
   'collect-finish',
   'collect-retry',
+  'create-task',
   'move-task',
+  'generate-task-review',
   'run-channel-action',
   'request-agentmail-send',
   'resolve-pending-action',
@@ -65,10 +81,10 @@ export const ARK_ACTION_TYPES = [
 ]
 
 /**
- * The five channels with the evidence grade each one actually has. The two
- * external channels read as standard MCP extensions and never as accepted on
- * real hardware: one mismatched word here turns an honest page into one that
- * folds under a follow-up question.
+ * The five channels with the evidence grade each one actually has. Four hosts
+ * (Obsidian, Claude Code, DSH, and real-machine QQ via AstrBot) have passed
+ * hardware acceptance; Tencent AgentMail remains an unverified standard MCP
+ * extension and never reads as accepted on real hardware.
  */
 export const ARK_CHANNELS = [
   {
@@ -112,10 +128,10 @@ export const ARK_CHANNELS = [
   {
     host: 'astrbot-qq',
     name: '手机 QQ（经 AstrBot）',
-    grade: 'mcp-extension',
-    gradeLabel: '标准 MCP 协议扩展接入',
+    grade: 'verified',
+    gradeLabel: '已完成实机验收',
     detail:
-      'AstrBot 用 streamable_http 连 Core 的 /mcp，headers 带 Authorization: Bearer；人格提示词由 ark-protocol、ask、summarize 三份 SKILL.md 正文拼接。示例对照 AstrBot v4.29.4 源码核对，尚未在真实 AstrBot 上运行。',
+      '真机 QQ 已完成实机验收：AstrBot 经 streamable_http 直连 Core 的 /mcp（Authorization: Bearer），与桌面端共享同一套 Collect 采集入库与 Tasks 任务工具。',
     actions: [
       { id: 'collect-submit', label: '投递链接' },
       { id: 'list-tasks', label: '查任务' },
@@ -124,7 +140,7 @@ export const ARK_CHANNELS = [
   },
   {
     host: 'agentmail',
-    name: '腾讯 AgentMail',
+    name: '邮件（经腾讯 AgentMail MCP）',
     grade: 'mcp-extension',
     gradeLabel: '标准 MCP 协议扩展接入',
     detail:
@@ -189,8 +205,8 @@ export function messageTime(at) {
 
 /** A line diff good enough to colour: unchanged lines kept as context. */
 export function diffLines(before, after) {
-  const left = before.split('\n')
-  const right = after.split('\n')
+  const left = before ? before.split('\n') : []
+  const right = after ? after.split('\n') : []
   const out = []
   const rows = Math.max(left.length, right.length)
   for (let i = 0; i < rows; i += 1) {
@@ -206,8 +222,25 @@ export function diffLines(before, after) {
   return out.join('\n')
 }
 
+function cloneTask(task) {
+  return { ...task, tags: [...task.tags] }
+}
+
+function cloneTasks(tasks) {
+  return tasks.map(cloneTask)
+}
+
+function cloneReview(review) {
+  return { ...review }
+}
+
 function taskLines(tasks) {
-  return tasks.map((task) => `${task.status === 'done' ? '[x]' : '[ ]'} ${task.title}`).join('\n')
+  const mark = { todo: '[ ]', doing: '[-]', done: '[x]' }
+  return tasks
+    .map(
+      (task) => `${mark[task.status] || '[ ]'} ${task.id} ${task.title} [${task.tags.join(', ')}]`
+    )
+    .join('\n')
 }
 
 function collectLines(items) {
@@ -216,6 +249,107 @@ function collectLines(items) {
 
 function commitId(clock, kind) {
   return fnv1a(`${kind}:${clock}:${kind}`)
+}
+
+/* ── V7 Tasks pure domain helpers ──────────────────────────────────────── */
+
+export function isTaskOverdue(task, nowIso = ARK_TASKS_NOW) {
+  return Boolean(task.due && task.status !== 'done' && task.due < nowIso)
+}
+
+export function isTaskDueToday(task, nowIso = ARK_TASKS_NOW) {
+  if (task.status === 'done') return false
+  return Boolean(task.dueToday || (task.due && task.due.slice(0, 10) === nowIso.slice(0, 10)))
+}
+
+export function isSameTaskWeek(iso) {
+  if (!iso) return false
+  const day = iso.slice(0, 10)
+  return day >= ARK_TASKS_WEEK_DATES[0] && day <= ARK_TASKS_WEEK_DATES[6]
+}
+
+/** Frequency-sorted tag list across all tasks on the board. */
+export function taskTagCounts(tasks) {
+  const counts = new Map()
+  for (const task of tasks) {
+    for (const tag of task.tags) {
+      counts.set(tag, (counts.get(tag) || 0) + 1)
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([tag, count]) => ({ tag, count }))
+}
+
+export function taskMatchesFilter(task, filter = {}) {
+  const tag = filter.tag || 'all'
+  const q = (filter.query || '').trim().toLowerCase()
+  if (tag !== 'all' && !task.tags.includes(tag)) return false
+  if (!q) return true
+  const haystack = [task.title, task.desc || '', task.parent || '', task.id, ...task.tags]
+    .join(' ')
+    .toLowerCase()
+  return haystack.includes(q)
+}
+
+/**
+ * V7 tag distribution & co-occurrence breakdown over completed tasks in 2026:
+ * - `tag === 'all'`: overall tag frequency across completed tasks.
+ * - `tag !== 'all'`: co-occurring tags on completed tasks carrying `tag`.
+ */
+export function taskCooccurrence(tasks, filter = {}) {
+  const tag = filter.tag || 'all'
+  const yearDone = tasks.filter(
+    (task) =>
+      taskMatchesFilter(task, filter) &&
+      task.status === 'done' &&
+      task.completed &&
+      task.completed.slice(0, 4) === '2026'
+  )
+  const counts = new Map()
+  for (const task of yearDone) {
+    for (const itemTag of task.tags) {
+      if (tag !== 'all' && itemTag === tag) continue
+      counts.set(itemTag, (counts.get(itemTag) || 0) + 1)
+    }
+  }
+  const rows = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([rowTag, count]) => ({
+      tag: rowTag,
+      count,
+      pct: yearDone.length ? Math.round((count / yearDone.length) * 100) : 0
+    }))
+  return {
+    mode: tag === 'all' ? 'distribution' : 'cooccurrence',
+    pivotTag: tag === 'all' ? null : tag,
+    totalDone: yearDone.length,
+    rows
+  }
+}
+
+export function taskYearSummary(tasks, filter = {}) {
+  const visible = tasks.filter((task) => taskMatchesFilter(task, filter))
+  const yearDone = visible
+    .filter(
+      (task) => task.status === 'done' && task.completed && task.completed.slice(0, 4) === '2026'
+    )
+    .sort((a, b) => (b.completed < a.completed ? -1 : 1))
+  const open = visible.filter((task) => task.status !== 'done')
+  const overdueCount = open.filter((task) => isTaskOverdue(task)).length
+  const byMonth = Array.from({ length: 12 }, () => 0)
+  for (const task of yearDone) {
+    const monthIndex = Number(task.completed.slice(5, 7)) - 1
+    if (monthIndex >= 0 && monthIndex < 12) byMonth[monthIndex] += 1
+  }
+  const totalTracked = yearDone.length + open.length
+  const completionRate = totalTracked ? Math.round((yearDone.length / totalTracked) * 100) : 0
+  return {
+    totalTracked,
+    yearDone,
+    overdueCount,
+    completionRate,
+    byMonth,
+    flow: taskCooccurrence(tasks, filter)
+  }
 }
 
 /* ── seed data ─────────────────────────────────────────────────────────── */
@@ -315,39 +449,295 @@ const SEED_COLLECT = [
 
 const SEED_TASKS = [
   {
-    id: 't1',
-    title: '整理本周采集的三条视频',
+    id: 't-8c1f',
+    title: '回复审稿人 2 的实验补充意见',
+    tags: ['工作', '写作'],
     status: 'todo',
+    due: '2026-11-18T09:00:00+08:00',
+    dueToday: false,
+    desc: '补齐消融实验表格与 related work 边界说明。',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-2183',
+    title: '整理本周采集的三条视频',
+    tags: ['工作', '阅读'],
+    status: 'todo',
+    due: '2026-11-21T19:30:00+08:00',
     dueToday: true,
+    desc: '抽完要点后双链回 [[方舟计划]] 与本周复盘草稿。',
     source: 'plugin:collect'
   },
   {
-    id: 't2',
-    title: '给多端同步文档补 AstrBot 配置片段',
-    status: 'doing',
-    dueToday: true,
-    source: 'ark(ark-agent)'
-  },
-  {
-    id: 't3',
-    title: '重跑一次 evals/gate.py 门禁',
+    id: 't-a3e6',
+    title: '清洗旧笔记目录与孤立标签',
+    tags: ['工作'],
     status: 'todo',
+    due: null,
     dueToday: false,
-    source: 'ark(ark-agent)'
+    parent: '重组知识库',
+    progress: '2/5',
+    source: 'ark(plugin:tasks)'
   },
   {
-    id: 't4',
-    title: '把记忆面板的降级按钮做出来',
-    status: 'done',
+    id: 't-c4a9',
+    title: '读完《卡片笔记写作法》后半册',
+    tags: ['阅读'],
+    status: 'todo',
+    due: null,
     dueToday: false,
     source: 'ark(obsidian)'
   },
   {
-    id: 't5',
-    title: '确认 AgentMail 的权限清单',
-    status: 'doing',
+    id: 't-5e20',
+    title: '采购周日晚餐食材与手冲豆',
+    tags: ['生活'],
+    status: 'todo',
+    due: '2026-11-22T17:00:00+08:00',
     dueToday: false,
-    source: 'ark(agentmail)'
+    desc: '顺路取干洗外套。',
+    source: 'ark(astrbot)'
+  },
+  {
+    id: 't-1d94',
+    title: '整理 M2B 多端实机验收记录',
+    tags: ['工作', '报告'],
+    status: 'doing',
+    due: '2026-11-21T18:00:00+08:00',
+    dueToday: true,
+    desc: '汇总 Obsidian、Claude Code、DSH 与手机 QQ（AstrBot）四端实测证据。',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-6f08',
+    title: '核对 AgentMail 外发确认卡回归用例',
+    tags: ['工作'],
+    status: 'doing',
+    due: null,
+    dueToday: false,
+    parent: '外发门禁收敛',
+    progress: '3/4',
+    source: 'ark(ark-agent)'
+  },
+  {
+    id: 't-x001',
+    title: '时间戳合同与偏移校验设计',
+    tags: ['工作'],
+    status: 'done',
+    due: '2026-11-16T18:00:00+08:00',
+    dueToday: false,
+    completed: '2026-11-16T17:20:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-x002',
+    title: '跑通 evals/gate.py 全测分块门禁',
+    tags: ['工作', '报告'],
+    status: 'done',
+    due: '2026-11-17T12:00:00+08:00',
+    dueToday: false,
+    completed: '2026-11-17T11:00:00+08:00',
+    source: 'ark(ark-agent)'
+  },
+  {
+    id: 't-x003',
+    title: '修复 Collect 长文抓取超时重试',
+    tags: ['工作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-18T15:40:00+08:00',
+    source: 'plugin:collect'
+  },
+  {
+    id: 't-x004',
+    title: '手机 QQ 经 AstrBot 连 /mcp 实机验收',
+    tags: ['工作', '报告', '写作'],
+    status: 'done',
+    due: '2026-11-19T23:30:00+08:00',
+    dueToday: false,
+    completed: '2026-11-19T22:30:00+08:00',
+    source: 'ark(astrbot)'
+  },
+  {
+    id: 't-x005',
+    title: '预约周末洗牙与年度体检',
+    tags: ['生活'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-20T12:15:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-y001',
+    title: '十月个人知识库月度盘点',
+    tags: ['生活', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-02T20:00:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-y002',
+    title: '《Local-first 软件设计》阅读批注',
+    tags: ['阅读', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-04T21:00:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-y003',
+    title: '杭州架构交流出差与访谈纪要',
+    tags: ['工作', '出差', '报告'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-06T18:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-y004',
+    title: 'Core 索引分片与增量扫描重构',
+    tags: ['工作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-11-09T16:00:00+08:00',
+    source: 'ark(ark-agent)'
+  },
+  {
+    id: 't-m001',
+    title: '双周研发进展同步简报',
+    tags: ['工作', '报告'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-10-28T16:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-m002',
+    title: '深圳客户现场联调出差',
+    tags: ['工作', '出差'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-10-22T18:30:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-z002',
+    title: '双链检索与按需上下文召回梳理',
+    tags: ['阅读', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-10-12T14:00:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z001',
+    title: '国庆出行路线与住宿安排',
+    tags: ['生活', '出差'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-10-03T09:30:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z004',
+    title: 'Q3 知识工作台阶段复盘报告',
+    tags: ['工作', '报告', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-09-26T17:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-z005',
+    title: '扩充一致性协议与 CRDT 阅读书单',
+    tags: ['阅读'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-09-15T10:00:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z006',
+    title: '上海技术峰会出差分享讲稿',
+    tags: ['工作', '出差', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-09-06T19:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-z007',
+    title: 'MCP 权限分级与确认门禁设计稿',
+    tags: ['工作', '写作'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-08-19T23:10:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z008',
+    title: '暑期有氧训练计划阶段打卡',
+    tags: ['生活'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-08-08T20:00:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z009',
+    title: '年中研发效能与门禁覆盖率报告',
+    tags: ['工作', '报告'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-07-14T15:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-z010',
+    title: '北京合作团队需求调研出差',
+    tags: ['工作', '出差'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-06-21T18:00:00+08:00',
+    source: 'ark(plugin:tasks)'
+  },
+  {
+    id: 't-z011',
+    title: '重读《设计数据密集型应用》读书笔记',
+    tags: ['阅读'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-06-07T21:30:00+08:00',
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't-z012',
+    title: 'Ark v1 原型问题清单与迁移报告',
+    tags: ['工作', '报告'],
+    status: 'done',
+    due: null,
+    dueToday: false,
+    completed: '2026-05-18T17:30:00+08:00',
+    source: 'ark(plugin:tasks)'
   }
 ]
 
@@ -396,7 +786,12 @@ const SEED_CHAT = [
     trace: [
       { tool: 'ark_load_skill', arg: 'organize', result: '已加载整理技能', ms: 12 },
       { tool: 'read', arg: '笔记/三体.md', result: '读到 4 段正文与 1 组 frontmatter', ms: 8 },
-      { tool: 'search', arg: '三体', result: '3 条：笔记/方舟计划.md、收件箱.md、笔记/三体.md', ms: 31 },
+      {
+        tool: 'search',
+        arg: '三体',
+        result: '3 条：笔记/方舟计划.md、收件箱.md、笔记/三体.md',
+        ms: 31
+      },
       { tool: 'patch', arg: '笔记/三体.md', result: '在「相关阅读」追加 [[方舟计划]]', ms: 11 }
     ]
   }
@@ -408,8 +803,9 @@ export function createInitialState() {
     workspaceTab: 'note',
     sidebarTab: 'chat',
     note: { path: NOTE_PATH, content: NOTE_INITIAL, rev: revOf(NOTE_INITIAL) },
-    collectItems: SEED_COLLECT.map((item) => ({ ...item })),
-    tasks: SEED_TASKS.map((task) => ({ ...task })),
+    collectItems: SEED_COLLECT.map((item) => ({ ...item, tags: [...item.tags] })),
+    tasks: cloneTasks(SEED_TASKS),
+    taskReviews: [],
     memories: SEED_MEMORIES.map((memory) => ({ ...memory })),
     thread: {
       slug: 'ark-v2-demo',
@@ -454,9 +850,12 @@ export function residentPreview(state) {
 
 /** What the tasks plugin injects: only unfinished work that is due today. */
 export function taskContextPreview(state) {
-  const due = state.tasks.filter((task) => task.dueToday && task.status !== 'done')
+  const due = state.tasks.filter((task) => isTaskDueToday(task))
   const lines = due.length
-    ? due.map((task) => `- [ ] ${task.title}（今日到期 · ${task.status}）`)
+    ? due.map(
+        (task) =>
+          `- [ ] ${task.title}（${task.id} · 今日到期 · ${task.status} · ${task.tags.map((g) => `#${g}`).join(' ')}）`
+      )
     : ['- 今天没有未完成且到期的任务']
   return [`# context.md · ${state.thread.slug}`, '## 今日到期', ...lines].join('\n')
 }
@@ -490,6 +889,8 @@ function withSnapshot(state, input, patch) {
     previousNoteContent: input.previousNoteContent,
     previousNoteRev: input.previousNoteRev,
     previousTasks: input.previousTasks,
+    previousTaskReviews: input.previousTaskReviews,
+    reviewPath: input.reviewPath,
     previousCollectItems: input.previousCollectItems
   }
   return { ...state, ...patch, clock, snapshots: [...state.snapshots, snapshot] }
@@ -521,7 +922,11 @@ function collectPoints(item) {
         '入库必须带来源锚点，否则三个月后没人敢引用。',
         '摘要只写能行动的部分。'
       ]
-    : ['先判断这条资料服务于哪个工作流。', '把结论和引用证据分开记。', '失败时要保留原链接，不能编摘要。']
+    : [
+        '先判断这条资料服务于哪个工作流。',
+        '把结论和引用证据分开记。',
+        '失败时要保留原链接，不能编摘要。'
+      ]
 }
 
 /** Undo one snapshot by commit. Only the newest un-reverted snapshot can go. */
@@ -539,20 +944,35 @@ export function undoSnapshot(state, commit) {
       content: newest.previousNoteContent,
       rev: newest.previousNoteRev || revOf(newest.previousNoteContent)
     }
-    return say({ ...state, snapshots, note }, 'agent', `已撤销 ${commit}，笔记精确恢复到写入前的字节。`)
+    return say(
+      { ...state, snapshots, note },
+      'agent',
+      `已撤销 ${commit}，笔记精确恢复到写入前的字节。`
+    )
   }
 
-  if (newest.kind === 'tasks' && newest.previousTasks) {
-    return say(
-      { ...state, snapshots, tasks: newest.previousTasks.map((task) => ({ ...task })) },
-      'agent',
-      `已撤销 ${commit}，任务看板回到写入前的状态。`
-    )
+  if (newest.kind === 'tasks') {
+    const nextState = {
+      ...state,
+      snapshots,
+      tasks: newest.previousTasks ? cloneTasks(newest.previousTasks) : state.tasks,
+      taskReviews: newest.previousTaskReviews
+        ? newest.previousTaskReviews.map(cloneReview)
+        : state.taskReviews
+    }
+    const text = newest.previousTaskReviews
+      ? `已撤销 ${commit}，回顾记录 ${newest.reviewPath || 'reviews/'} 已从 Vault 撤回。`
+      : `已撤销 ${commit}，任务看板回到写入前的状态。`
+    return say(nextState, 'agent', text)
   }
 
   if (newest.kind === 'collect' && newest.previousCollectItems) {
     return say(
-      { ...state, snapshots, collectItems: newest.previousCollectItems.map((item) => ({ ...item })) },
+      {
+        ...state,
+        snapshots,
+        collectItems: newest.previousCollectItems.map((item) => ({ ...item, tags: [...item.tags] }))
+      },
       'agent',
       `已撤销 ${commit}，入库记录与摘要笔记一并撤回，来源链接保留。`
     )
@@ -652,7 +1072,10 @@ export function dispatch(state, action) {
             source: sourceOfCollect(target),
             message: `${sourceOfCollect(target)}: collect ${finished.notePath}`,
             diff: diffLines(collectLines(state.collectItems), collectLines(items)),
-            previousCollectItems: state.collectItems.map((item) => ({ ...item }))
+            previousCollectItems: state.collectItems.map((item) => ({
+              ...item,
+              tags: [...item.tags]
+            }))
           },
           { collectItems: items }
         ),
@@ -660,7 +1083,12 @@ export function dispatch(state, action) {
         `入库完成：${finished.notePath}。摘要、要点、来源锚点都在，随时可检索。`,
         [
           { tool: 'collect_fetch', arg: finished.origin, result: '取到正文与元数据', ms: 640 },
-          { tool: 'collect_extract', arg: '摘要 + 要点', result: '生成 1 段摘要、3 条要点', ms: 1180 },
+          {
+            tool: 'collect_extract',
+            arg: '摘要 + 要点',
+            result: '生成 1 段摘要、3 条要点',
+            ms: 1180
+          },
           { tool: 'write', arg: finished.notePath, result: '写入 Vault，附带来源锚点', ms: 14 }
         ]
       )
@@ -686,27 +1114,147 @@ export function dispatch(state, action) {
       )
     }
 
+    case 'create-task': {
+      const title = (action.title || '').trim()
+      if (!title) return state
+      const rawTags = Array.isArray(action.tags) ? action.tags : []
+      const cleanTags = [...new Set(rawTags.map((tag) => String(tag).trim()).filter(Boolean))]
+      const tags = cleanTags.length ? cleanTags : ['工作']
+      const due = action.dueToday ? '2026-11-21T20:00:00+08:00' : action.due || null
+      const hashId = `t-${fnv1a(`${title}:${state.clock + 1}`).slice(0, 4)}`
+      const id = state.tasks.some((task) => task.id === hashId) ? `t-n${state.clock + 1}` : hashId
+      const created = {
+        id,
+        title,
+        tags,
+        status: 'todo',
+        due,
+        dueToday: Boolean(due && due.slice(0, 10) === ARK_TASKS_NOW.slice(0, 10)),
+        desc: action.desc ? String(action.desc).trim() || undefined : undefined,
+        source: 'ark(plugin:tasks)'
+      }
+      const tasks = [created, ...cloneTasks(state.tasks)]
+      return say(
+        withSnapshot(
+          state,
+          {
+            kind: 'tasks',
+            source: 'ark(plugin:tasks)',
+            message: `ark(plugin:tasks): create ${created.id} ${created.title}`,
+            diff: diffLines(taskLines(state.tasks), taskLines(tasks)),
+            previousTasks: cloneTasks(state.tasks)
+          },
+          { workspaceTab: 'tasks', tasks }
+        ),
+        'agent',
+        `已新建任务「${created.title}」（${created.id} · ${created.tags.map((g) => `#${g}`).join(' ')}），直接落盘并生成快照。`
+      )
+    }
+
     case 'move-task': {
       const target = state.tasks.find((task) => task.id === action.id)
       if (!target || target.status === action.status) return state
-      const tasks = state.tasks.map((task) =>
-        task.id === action.id ? { ...task, status: action.status } : task
-      )
+      const tasks = state.tasks.map((task) => {
+        if (task.id !== action.id) return cloneTask(task)
+        return {
+          ...cloneTask(task),
+          status: action.status,
+          completed: action.status === 'done' ? task.completed || ARK_TASKS_NOW : undefined
+        }
+      })
       const label = { todo: '待办', doing: '进行中', done: '已完成' }[action.status]
       return say(
         withSnapshot(
           state,
           {
             kind: 'tasks',
-            source: 'ark(ark-agent)',
-            message: `ark(ark-agent): tasks 将 ${target.id} 移到 ${action.status}`,
+            source: 'ark(plugin:tasks)',
+            message: `ark(plugin:tasks): 将 ${target.id} 移到 ${action.status}`,
             diff: diffLines(taskLines(state.tasks), taskLines(tasks)),
-            previousTasks: state.tasks.map((task) => ({ ...task }))
+            previousTasks: cloneTasks(state.tasks)
           },
           { tasks }
         ),
         'agent',
-        `任务「${target.title}」已移到${label}。看板变更同样进快照，不用先问。`
+        `任务「${target.title}」已移到${label}。看板变更与 context.md 同步生效，已落快照。`
+      )
+    }
+
+    case 'generate-task-review': {
+      const period = action.period
+      if (period !== 'week' && period !== 'month' && period !== 'year') return state
+      const filter = { tag: action.tag || 'all', query: (action.query || '').trim() }
+      const monthKey = action.month || '2026-11'
+      const meta =
+        period === 'week'
+          ? { label: '周报', file: '2026-W47.md', scope: '2026-W47（11-16 至 11-22）' }
+          : period === 'month'
+            ? { label: '月报', file: `${monthKey}.md`, scope: monthKey }
+            : { label: '年报', file: '2026.md', scope: '2026 全年' }
+      const path = `Ark 工作区/tasks/reviews/${meta.file}`
+      const matchedDone = state.tasks
+        .filter((task) => {
+          if (!taskMatchesFilter(task, filter)) return false
+          if (task.status !== 'done' || !task.completed) return false
+          if (period === 'week') return isSameTaskWeek(task.completed)
+          if (period === 'month') return task.completed.slice(0, 7) === monthKey
+          return task.completed.slice(0, 4) === '2026'
+        })
+        .sort((a, b) => (b.completed < a.completed ? -1 : 1))
+
+      const filterSummary = `${filter.tag === 'all' ? '全部标签' : `标签:${filter.tag}`}${
+        filter.query ? ` · 搜索:“${filter.query}”` : ''
+      }`
+      const bodyLines = matchedDone.length
+        ? matchedDone.map(
+            (task) =>
+              `- [[tasks/${task.id}|${task.title}]]（${task.tags.map((g) => `#${g}`).join(' ')} · ✓ ${task.completed.slice(0, 10)}）`
+          )
+        : ['- 当前回顾筛选下暂无完成记录']
+      const content = [
+        '---',
+        `title: ${meta.scope} 任务${meta.label}`,
+        `filter: "${filterSummary}"`,
+        `completed_count: ${matchedDone.length}`,
+        '---',
+        '',
+        `## 完成清单（${matchedDone.length} 件）`,
+        ...bodyLines
+      ].join('\n')
+
+      const existing = state.taskReviews.find((item) => item.path === path)
+      if (existing && existing.content === content) return state
+
+      const review = {
+        id: `review-${state.clock + 1}`,
+        period,
+        label: meta.label,
+        path,
+        filterTag: filter.tag,
+        filterQuery: filter.query,
+        completedCount: matchedDone.length,
+        content,
+        at: state.clock + 1
+      }
+      const nextReviews = existing
+        ? state.taskReviews.map((item) => (item.path === path ? review : cloneReview(item)))
+        : [...state.taskReviews.map(cloneReview), review]
+
+      return say(
+        withSnapshot(
+          state,
+          {
+            kind: 'tasks',
+            source: 'ark(plugin:tasks)',
+            message: `ark(plugin:tasks): review ${path}`,
+            diff: diffLines(existing ? existing.content : '', content),
+            previousTaskReviews: state.taskReviews.map(cloneReview),
+            reviewPath: path
+          },
+          { workspaceTab: 'tasks', taskReviews: nextReviews }
+        ),
+        'agent',
+        `已生成${meta.label}：${path}（遵循当前回顾筛选，收录 ${matchedDone.length} 条可 [[链接]] 完成项，支持一键撤销）。`
       )
     }
 
@@ -748,9 +1296,9 @@ export function dispatch(state, action) {
               },
               {
                 tool: 'tasks_today',
-                arg: '今日到期',
-                result: `返回 ${
-                  state.tasks.filter((task) => task.dueToday && task.status !== 'done').length
+                arg: '今日到期 / 已逾期',
+                result: `今日到期 ${state.tasks.filter((task) => isTaskDueToday(task)).length} 条 · 已逾期 ${
+                  state.tasks.filter((task) => isTaskOverdue(task)).length
                 } 条`,
                 ms: 6
               }
@@ -927,7 +1475,10 @@ export function dispatch(state, action) {
         return {
           ...state,
           clock,
-          thread: { ...state.thread, pendingConflicts: [...state.thread.pendingConflicts, conflict] },
+          thread: {
+            ...state.thread,
+            pendingConflicts: [...state.thread.pendingConflicts, conflict]
+          },
           chat: [
             ...state.chat,
             {

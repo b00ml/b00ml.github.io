@@ -54,6 +54,7 @@ describe('sitemap lastmod', () => {
       // zero-backend interactive demos. Nothing to date them from.
       '/projects/finance-review-agent/demo',
       '/projects/ark-workbench/demo',
+      '/projects/ark-workbench/product',
       '/projects/english-content-workbench/demo'
     ]
     for (const pathname of undated) expect(sitemapLastModified(pathname)).toBeUndefined()

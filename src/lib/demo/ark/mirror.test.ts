@@ -46,13 +46,22 @@ describe('demo page mirrors the authoritative state machine', () => {
     for (const action of ARK_ACTION_TYPES) expect(page).toContain(action)
   })
 
-  test('the page carries every invariant string the rules depend on', () => {
+  test('the page carries every invariant string for memory, V7 tasks workbench, and product switcher', () => {
     for (const fragment of [
       MEMORY_INFERRED_PREFIX,
       'pendingConflicts',
       'baseRev',
       '已撤销',
-      '插件 context.md（今日到期）'
+      '插件 context.md（今日到期）',
+      '搜索看板任务…',
+      '现算 · 不产生文件',
+      '回顾筛选：',
+      '生成周报',
+      '生成月报',
+      '生成年报',
+      '精力流向',
+      '/projects/ark-workbench/product/',
+      '切换看「产品概念页」版'
     ]) {
       expect(page).toContain(fragment)
     }
@@ -62,7 +71,14 @@ describe('demo page mirrors the authoritative state machine', () => {
     const graded = page.slice(page.indexOf(BEGIN), page.indexOf(END))
     expect(graded).toContain('已完成实机验收')
     expect(graded).toContain('标准 MCP 协议扩展接入')
-    // Honest grading: the two MCP-extension channels must never read as accepted.
+
+    // astrbot-qq passed real-machine acceptance; agentmail remains mcp-extension.
+    const qq = ARK_CHANNELS.find((item) => item.host === 'astrbot-qq')
+    const mail = ARK_CHANNELS.find((item) => item.host === 'agentmail')
+    expect(qq?.grade).toBe('verified')
+    expect(mail?.grade).toBe('mcp-extension')
+
+    // Honest grading: any MCP-extension channel must never read as accepted.
     for (const channel of ARK_CHANNELS.filter((item) => item.grade === 'mcp-extension')) {
       const block = graded.slice(graded.indexOf(`host: '${channel.host}'`))
       const card = block.slice(0, block.indexOf('actions:'))
@@ -71,11 +87,8 @@ describe('demo page mirrors the authoritative state machine', () => {
   })
 
   test('the two evidence grades are visually distinct: verified green, extension amber', () => {
-    // The colour is part of the claim, not decoration: a reader scanning the
-    // channel grid must see QQ and AgentMail as a different, lesser grade.
     expect(page).toMatch(/\.grade\.verified\s*\{[^}]*var\(--ok\)/)
     expect(page).toMatch(/\.grade\.mcp\s*\{[^}]*var\(--warn\)/)
-    // And the two tokens really are different colours, in both themes.
     const amber = page.match(/--warn:\s*(#[0-9a-f]{6})/i)?.[1]
     const green = page.match(/--ok:\s*(#[0-9a-f]{6})/i)?.[1]
     expect(amber).toBeDefined()
@@ -93,10 +106,12 @@ describe('demo page mirrors the authoritative state machine', () => {
     expect(page).toContain('data-act="theme"')
   })
 
-  test('is a closed, dependency-free page with a reduced-motion fallback', () => {
+  test('is a closed, dependency-free page with a reduced-motion fallback and zero mojibake', () => {
     expect(page).toContain('prefers-reduced-motion')
     expect(page).toContain('localStorage')
     expect(page).toContain('data-theme')
+    expect(page).not.toContain('\uFFFD')
+    expect(machine).not.toContain('\uFFFD')
     // No site chrome, no framework, no CDN.
     expect(page).not.toMatch(/<script[^>]+src=/i)
     expect(page).not.toMatch(/<link[^>]+href=["']https?:/i)
@@ -108,12 +123,12 @@ describe('demo page mirrors the authoritative state machine', () => {
   })
 
   test('keeps the page free of class rules this site never generates', () => {
-    // The page ships its own plain CSS, so `font-variant-numeric: tabular-nums`
-    // is legitimate there. What must never appear is a *class* this site's
-    // UnoCSS preset cannot generate — the same guard `src/site.config.test.ts`
-    // applies to /src, extended to the markup this page will ship.
     const markup = page.replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, '')
-    for (const forbidden of [/class="[^"]*\bspace-[xy]-\d+\b/, /class="[^"]*\btabular-nums\b/, /class="[^"]*\bline-clamp-\d+\b/]) {
+    for (const forbidden of [
+      /class="[^"]*\bspace-[xy]-\d+\b/,
+      /class="[^"]*\btabular-nums\b/,
+      /class="[^"]*\bline-clamp-\d+\b/
+    ]) {
       expect(markup).not.toMatch(forbidden)
     }
     expect(markup).not.toContain('space-y-')

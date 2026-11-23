@@ -5,495 +5,1150 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ark v2 全渠道交互架构</title>
 <!--
-  Ark v2 all-channel topology, hand-authored single file.
-  No external dependency of any kind: no CDN script, no webfont, no stylesheet
-  link. Everything below ships in this file so it renders offline and inside an
-  <iframe> on the blog.
-
-  Interaction contract:
-  - [data-theme] on <html> swaps the two token sets; the first paint resolves
-    the theme from ?theme=, then localStorage, then prefers-color-scheme.
-  - Hovering or focusing any node lights the routes it belongs to and dims the
-    rest ("focus on hover"). A route is the full path one channel travels, not
-    just its immediate neighbour, so the reader can see the whole chain at once.
-  - Every transition is disabled under prefers-reduced-motion: reduce. State
-    still changes, only the animation goes.
+  Ark v2 all-channel topology — self-contained interactive explorer.
+  Zero external dependencies: no CDN script, no remote webfont, no external stylesheet.
+  Syncs seamlessly with the parent blog's `theme` localStorage key & dark class,
+  renders with zero nested scrollbars inside iframes (.is-embed), and supports
+  wheel zoom, pointer drag-to-pan, route filter pills, and hover/focus spotlighting.
 -->
+<script>
+  (function () {
+    var root = document.documentElement
+    try {
+      if (window.self !== window.top) root.classList.add('is-embed')
+    } catch (_) {
+      root.classList.add('is-embed')
+    }
+
+    function resolveInitialTheme() {
+      try {
+        var param = new URLSearchParams(location.search).get('theme')
+        if (param === 'light' || param === 'dark') return param
+      } catch (_) {}
+      try {
+        var diagramSaved = localStorage.getItem('ark-diagram-theme')
+        if (diagramSaved === 'light' || diagramSaved === 'dark') return diagramSaved
+      } catch (_) {}
+      try {
+        var blogSaved = localStorage.getItem('theme')
+        if (blogSaved === 'light' || blogSaved === 'dark') return blogSaved
+      } catch (_) {}
+      try {
+        if (window.self !== window.top && window.parent && window.parent.document) {
+          return window.parent.document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+        }
+      } catch (_) {}
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    }
+
+    root.setAttribute('data-theme', resolveInitialTheme())
+  })()
+</script>
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #121214;
-    --panel: #1a1a1f;
-    --card: #202027;
-    --ink: #e9e9ee;
-    --muted: #9a9aa8;
-    --faint: #6f6f7e;
-    --line: #38383f;
-    --line-strong: #4b4b55;
-    --verified: #35d39a;
-    --verified-soft: rgba(53, 211, 154, 0.12);
-    --ext: #f0b429;
-    --ext-soft: rgba(240, 180, 41, 0.12);
-    --accent: #7c9cff;
-    --accent-soft: rgba(124, 156, 255, 0.12);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  @font-face {
+    font-family: 'Satoshi';
+    src: url('/fonts/Satoshi-Variable.ttf');
+    font-style: normal;
+    font-display: swap;
   }
 
+  :root,
   html[data-theme='light'] {
     color-scheme: light;
-    --bg: #fbfbfa;
-    --panel: #ffffff;
-    --card: #ffffff;
-    --ink: #1b1b1f;
-    --muted: #5c5c67;
-    --faint: #8b8b96;
-    --line: #dedcd8;
-    --line-strong: #b9b6b0;
-    --verified: #0d7a63;
-    --verified-soft: rgba(13, 122, 99, 0.08);
-    --ext: #a2600a;
-    --ext-soft: rgba(162, 96, 10, 0.08);
-    --accent: #3a5ccc;
-    --accent-soft: rgba(58, 92, 204, 0.08);
-    --shadow: 0 1px 2px rgba(20, 20, 30, 0.07);
+    --background: 210 33% 99%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --primary: 200 29% 45%;
+    --secondary: 240 4.8% 95.9%;
+    --muted: 240 4.8% 95%;
+    --muted-foreground: 240 3.8% 28.1%;
+    --border: 240 5.9% 88%;
+
+    --bg: hsl(var(--background));
+    --panel: hsl(var(--card));
+    --node-bg: hsl(var(--card));
+    --node-head: hsl(var(--secondary));
+    --ink: hsl(var(--foreground));
+    --sub: hsl(var(--muted-foreground));
+    --faint: hsl(240 3.8% 46%);
+    --line: hsl(var(--border));
+    --line-strong: hsl(240 5.9% 68%);
+    --accent: hsl(var(--primary));
+    --accent-soft: hsl(var(--primary) / 0.11);
+    --verified: hsl(164 76% 29%);
+    --verified-soft: hsl(164 76% 29% / 0.11);
+    --ext: hsl(34 88% 36%);
+    --ext-soft: hsl(34 88% 36% / 0.12);
+    --grid-dot: hsl(240 5.9% 84% / 0.65);
+    --shadow: 0 1px 3px hsl(var(--foreground) / 0.05);
   }
 
-  * { box-sizing: border-box; }
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --background: 240 20.54% 5.2%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --primary: 195 95% 85%;
+    --secondary: 240 3.7% 15.9%;
+    --muted: 240 5.9% 12%;
+    --muted-foreground: 240 5% 74.9%;
+    --border: 240 3.7% 19.9%;
 
+    --bg: hsl(var(--background));
+    --panel: hsl(var(--card));
+    --node-bg: hsl(240 10% 7.2%);
+    --node-head: hsl(var(--muted));
+    --ink: hsl(var(--foreground));
+    --sub: hsl(var(--muted-foreground));
+    --faint: hsl(240 5% 56%);
+    --line: hsl(var(--border));
+    --line-strong: hsl(240 5% 38%);
+    --accent: hsl(var(--primary));
+    --accent-soft: hsl(var(--primary) / 0.13);
+    --verified: hsl(160 67% 55%);
+    --verified-soft: hsl(160 67% 55% / 0.14);
+    --ext: hsl(41 92% 62%);
+    --ext-soft: hsl(41 92% 62% / 0.14);
+    --grid-dot: hsl(240 3.7% 22% / 0.6);
+    --shadow: 0 2px 8px hsl(0 0% 0% / 0.35);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
   body {
     margin: 0;
+    padding: 0;
     background: var(--bg);
     color: var(--ink);
-    font-family: 'Satoshi', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-      'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+    font-family:
+      'Satoshi',
+      system-ui,
+      -apple-system,
+      'PingFang SC',
+      'Hiragino Sans GB',
+      'Microsoft YaHei',
+      'Source Han Sans SC',
+      'Noto Sans CJK SC',
+      sans-serif;
     font-size: 14px;
-    line-height: 1.6;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  .shell { max-width: 1240px; margin: 0 auto; padding: 20px 18px 40px; }
+  .shell {
+    max-width: 1260px;
+    margin: 0 auto;
+    padding: 20px 20px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-  header.head {
+  /* Embed mode: strict 100% viewport fit, zero browser scrollbars */
+  html.is-embed,
+  html.is-embed body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html.is-embed .shell {
+    height: 100%;
+    max-width: none;
+    padding: 8px 10px;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  html.is-embed .embed-hide {
+    display: none !important;
+  }
+
+  /* Top toolbar */
+  header.topbar {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  header.head h1 { margin: 0 0 2px; font-size: 18px; font-weight: 600; letter-spacing: 0.01em; }
-  header.head p { margin: 0; color: var(--muted); font-size: 12.5px; }
-
-  .tools { display: flex; align-items: center; gap: 8px; }
-  .tools button {
-    font: inherit;
-    font-size: 12.5px;
-    color: var(--ink);
+    gap: 8px 12px;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 7px;
-    padding: 5px 11px;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease;
+    border-radius: 10px;
+    padding: 10px 14px;
+    flex-shrink: 0;
   }
-  .tools button:hover { border-color: var(--line-strong); }
-  .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  figure {
+  html.is-embed header.topbar {
+    padding: 8px 12px;
+    gap: 6px 10px;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .brand h1 {
     margin: 0;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 10px 10px 4px;
-    box-shadow: var(--shadow);
-    overflow-x: auto;
-  }
-  svg.topology { display: block; width: 100%; min-width: 900px; height: auto; }
-
-  /* ---------- SVG tokens ---------- */
-  .zone { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 5 5; }
-  .zone-label { fill: var(--faint); font-size: 11px; letter-spacing: 0.06em; }
-  .col-label { fill: var(--faint); font-size: 11px; letter-spacing: 0.12em; }
-
-  .node {
-    fill: var(--card);
-    stroke: var(--line-strong);
-    stroke-width: 1.2;
-    transition: opacity 0.28s ease, stroke 0.28s ease;
-    cursor: default;
-  }
-  .node.verified { stroke: var(--verified); }
-  .node.ext { stroke: var(--ext); stroke-dasharray: 6 4; }
-  .node.core { stroke: var(--accent); }
-
-  .n-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
-  .n-sub { fill: var(--muted); font-size: 11px; }
-  .n-mono { fill: var(--muted); font-size: 10.5px; font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace; }
-
-  .edge { fill: none; stroke: var(--line-strong); stroke-width: 1.6; transition: opacity 0.28s ease; }
-  .edge.verified { stroke: var(--verified); }
-  .edge.ext { stroke: var(--ext); stroke-dasharray: 7 5; }
-  .edge-label {
-    fill: var(--muted);
-    font-size: 10.5px;
-    paint-order: stroke;
-    stroke: var(--panel);
-    stroke-width: 4px;
-    stroke-linejoin: round;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .chip-bg { rx: 4; }
-  .chip-verified { fill: var(--verified-soft); stroke: none; }
-  .chip-ext { fill: var(--ext-soft); stroke: none; }
-  .chip-text { font-size: 10px; }
-  .chip-text.verified { fill: var(--verified); }
-  .chip-text.ext { fill: var(--ext); }
+  html.is-embed .brand h1 {
+    font-size: 14px;
+  }
 
-  /* Focus on hover: everything not on the hovered route dims out. */
-  svg.focusing .node:not(.lit) { opacity: 0.18; }
-  svg.focusing .edge:not(.lit) { opacity: 0.1; }
-  svg.focusing .edge-label:not(.lit) { opacity: 0.12; }
-  svg.focusing .node.lit { stroke-width: 2; }
-  svg.focusing .edge.lit { stroke-width: 2.6; }
-  .node:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2.4; }
-
-  /* Legend + prose under the canvas. */
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 2px 0; font-size: 12px; color: var(--muted); }
-  .legend span.key { display: inline-flex; align-items: center; gap: 6px; }
-  .legend i { display: inline-block; width: 26px; height: 0; border-top-width: 2px; border-top-style: solid; }
-  .legend i.verified { border-color: var(--verified); }
-  .legend i.ext { border-color: var(--ext); border-top-style: dashed; }
-  .legend i.core { border-color: var(--accent); }
-
-  .notes { display: grid; gap: 10px; margin-top: 14px; grid-template-columns: 1fr; }
-  @media (min-width: 720px) { .notes { grid-template-columns: 1fr 1fr; } }
-  .note {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-left-width: 3px;
-    border-radius: 8px;
-    padding: 10px 13px;
+  .brand p {
+    margin: 0;
     font-size: 12.5px;
-    color: var(--muted);
+    color: var(--sub);
   }
-  .note.verified { border-left-color: var(--verified); }
-  .note.ext { border-left-color: var(--ext); }
-  .note strong { color: var(--ink); font-weight: 600; }
+
+  .brand code,
   .note code {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11.5px;
     color: var(--ink);
-    background: var(--card);
+    background: hsl(var(--muted));
     border: 1px solid var(--line);
     border-radius: 4px;
     padding: 0 4px;
   }
 
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Filter pills */
+  .filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: none;
+    padding: 1px;
+  }
+
+  .filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pill {
+    flex: none;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--sub);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    padding: 5px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+  }
+
+  .pill:hover {
+    color: var(--ink);
+    border-color: var(--line-strong);
+    background: hsl(var(--secondary));
+  }
+
+  .pill[aria-pressed='true'] {
+    color: var(--ink);
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+
+  .pill[data-filter='verified'] .dot {
+    background: var(--verified);
+  }
+
+  .pill[data-filter='ext'] .dot {
+    background: var(--ext);
+  }
+
+  /* Zoom & theme controls */
+  .controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+  }
+
+  .zoom-group {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: hsl(var(--secondary) / 0.55);
+    overflow: hidden;
+  }
+
+  .ctrl-btn {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--sub);
+    background: transparent;
+    border: 0;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: color 0.18s ease, background-color 0.18s ease;
+  }
+
+  .ctrl-btn:hover {
+    color: var(--ink);
+    background: hsl(var(--border) / 0.6);
+  }
+
+  .zoom-readout {
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    min-width: 42px;
+    text-align: center;
+    user-select: none;
+    padding: 0 2px;
+  }
+
+  .reset-btn {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    padding: 5px 9px;
+  }
+
+  .reset-btn:hover {
+    border-color: var(--line-strong);
+  }
+
+  /* Blurred Icon Transition per DESIGN.md */
+  .theme-toggle {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    padding: 6px;
+    box-sizing: content-box;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--sub);
+    cursor: pointer;
+    flex: none;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .theme-toggle:hover {
+    color: var(--ink);
+    background: hsl(var(--border) / 0.55);
+    border-color: var(--line-strong);
+  }
+
+  .theme-toggle svg {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 16px;
+    height: 16px;
+    transition: opacity 0.25s ease, filter 0.25s ease, transform 0.25s ease;
+  }
+
+  .theme-toggle .icon-sun {
+    opacity: 0;
+    filter: blur(4px);
+    transform: scale(0.6);
+  }
+
+  .theme-toggle .icon-moon {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  html[data-theme='light'] .theme-toggle .icon-sun {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  html[data-theme='light'] .theme-toggle .icon-moon {
+    opacity: 0;
+    filter: blur(4px);
+    transform: scale(0.6);
+  }
+
+  .pill:focus-visible,
+  .ctrl-btn:focus-visible,
+  .theme-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Interactive canvas stage */
+  .canvas-stage {
+    position: relative;
+    margin: 0;
+    background-color: var(--panel);
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 18px 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    height: clamp(500px, calc(100vh - 250px), 760px);
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+  }
+
+  html.is-embed .canvas-stage {
+    flex: 1 1 0%;
+    min-height: 0;
+    min-width: 0;
+    height: auto;
+    border-radius: 10px;
+  }
+
+  .canvas-stage.is-dragging {
+    cursor: grabbing;
+  }
+
+  svg.topology {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    min-width: 0;
+  }
+
+  /* SVG visual tokens */
+  .col-label {
+    fill: var(--faint);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .zone {
+    fill: hsl(var(--secondary) / 0.38);
+    stroke: var(--accent);
+    stroke-opacity: 0.42;
+    stroke-width: 1.4;
+    stroke-dasharray: 6 5;
+  }
+
+  .zone-badge {
+    fill: var(--panel);
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+
+  .zone-label {
+    fill: var(--sub);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .legend-card {
+    fill: hsl(var(--secondary) / 0.45);
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+
+  .node {
+    cursor: pointer;
+    transition: opacity 0.22s ease;
+  }
+
+  .node rect.body {
+    fill: var(--node-bg);
+    stroke: var(--line-strong);
+    stroke-width: 1.3;
+    transition: stroke 0.22s ease, stroke-width 0.22s ease, fill 0.22s ease;
+  }
+
+  .node.verified rect.body {
+    stroke: var(--verified);
+  }
+
+  .node.ext rect.body {
+    stroke: var(--ext);
+    stroke-dasharray: 6 4;
+  }
+
+  .node.core rect.body {
+    stroke: var(--accent);
+  }
+
+  .node:hover rect.body {
+    stroke-width: 2;
+  }
+
+  .node:focus-visible {
+    outline: none;
+  }
+
+  .node:focus-visible rect.body {
+    stroke: var(--accent);
+    stroke-width: 2.4;
+  }
+
+  .n-divider {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+
+  .n-title {
+    fill: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .n-sub {
+    fill: var(--sub);
+    font-size: 11.2px;
+  }
+
+  .n-mono {
+    fill: var(--sub);
+    font-size: 10.6px;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .chip-verified {
+    fill: var(--verified-soft);
+    stroke: var(--verified);
+    stroke-opacity: 0.35;
+    stroke-width: 1;
+  }
+
+  .chip-ext {
+    fill: var(--ext-soft);
+    stroke: var(--ext);
+    stroke-opacity: 0.4;
+    stroke-width: 1;
+  }
+
+  .chip-core {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-opacity: 0.35;
+    stroke-width: 1;
+  }
+
+  .chip-text {
+    font-size: 10px;
+    font-weight: 600;
+    text-anchor: middle;
+  }
+
+  .chip-text.verified {
+    fill: var(--verified);
+  }
+
+  .chip-text.ext {
+    fill: var(--ext);
+  }
+
+  .chip-text.core {
+    fill: var(--accent);
+  }
+
+  .edge {
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: opacity 0.22s ease, stroke-width 0.22s ease;
+  }
+
+  .edge.verified {
+    stroke: var(--verified);
+  }
+
+  .edge.ext {
+    stroke: var(--ext);
+    stroke-dasharray: 6 4;
+  }
+
+  .edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 14;
+    cursor: pointer;
+  }
+
+  .edge-label {
+    fill: var(--sub);
+    font-size: 10.4px;
+    font-weight: 500;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: var(--panel);
+    stroke-width: 5px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: opacity 0.22s ease;
+    pointer-events: none;
+  }
+
+  /* Focus / filter spotlighting */
+  svg.focusing .node:not(.lit) {
+    opacity: 0.16;
+  }
+
+  svg.focusing .edge:not(.lit) {
+    opacity: 0.1;
+  }
+
+  svg.focusing .edge-label:not(.lit) {
+    opacity: 0.1;
+  }
+
+  svg.focusing .node.lit rect.body {
+    stroke-width: 2.1;
+  }
+
+  svg.focusing .edge.lit {
+    stroke-width: 2.5;
+  }
+
+  /* Footer status + standalone notes */
+  .status-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 16px;
+    font-size: 12px;
+    color: var(--sub);
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+
+  html.is-embed .status-strip {
+    font-size: 11.5px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+  }
+
+  .legend span.key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .legend i {
+    display: inline-block;
+    width: 20px;
+    height: 0;
+    border-top: 2px solid var(--line-strong);
+  }
+
+  .legend i.verified {
+    border-color: var(--verified);
+  }
+
+  .legend i.ext {
+    border-color: var(--ext);
+    border-top-style: dashed;
+  }
+
+  .legend i.core {
+    border-color: var(--accent);
+  }
+
+  .stage-hint {
+    color: var(--faint);
+    white-space: nowrap;
+  }
+
+  .notes {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 768px) {
+    .notes {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .note {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: var(--sub);
+  }
+
+  .note.verified {
+    border-left-color: var(--verified);
+  }
+
+  .note.ext {
+    border-left-color: var(--ext);
+  }
+
+  .note strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  @media (max-width: 640px) {
+    .shell {
+      padding: 12px 12px 24px;
+    }
+
+    html.is-embed .shell {
+      padding: 6px 8px;
+      gap: 6px;
+    }
+
+    html.is-embed header.topbar {
+      padding: 6px 8px;
+      gap: 5px 8px;
+    }
+
+    .pill {
+      font-size: 11px;
+      padding: 4px 8px;
+    }
+
+    .stage-hint {
+      display: none;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .node, .edge { transition: none; }
-    .tools button { transition: none; }
+    html,
+    body,
+    .pill,
+    .ctrl-btn,
+    .theme-toggle,
+    .theme-toggle svg,
+    .node,
+    .node rect.body,
+    .edge,
+    .edge-label {
+      transition: none !important;
+    }
+
+    .theme-toggle .icon-sun,
+    .theme-toggle .icon-moon {
+      filter: none;
+      transform: none;
+    }
   }
 </style>
 </head>
 <body>
 <div class="shell">
-  <header class="head">
-    <div>
+  <header class="topbar">
+    <div class="brand">
       <h1>Ark v2 · 全渠道交互架构</h1>
-      <p>一个 <code>ark serve</code> 进程、一个端口、一个 token；五个渠道连的是同一个大脑，不是五份同步状态。</p>
+      <p class="embed-hide">单机只跑一个 <code>ark serve</code> 进程、一个端口、一套鉴权；五个渠道连接同一个大脑，不做多端状态同步。</p>
     </div>
-    <div class="tools">
-      <button id="theme-btn" type="button" aria-pressed="true">浅色主题</button>
-      <button id="reset-btn" type="button">清除聚焦</button>
+
+    <div class="toolbar-right">
+      <div class="filters" role="toolbar" aria-label="按验收等级或渠道筛选通路">
+        <button class="pill" type="button" data-filter="all" aria-pressed="true">全部</button>
+        <button class="pill" type="button" data-filter="verified" aria-pressed="false"><span class="dot"></span>已完成实机验收</button>
+        <button class="pill" type="button" data-filter="ext" aria-pressed="false"><span class="dot"></span>MCP 扩展接入</button>
+        <button class="pill" type="button" data-filter="obsidian" aria-pressed="false">Obsidian</button>
+        <button class="pill" type="button" data-filter="claude-code" aria-pressed="false">Claude Code</button>
+        <button class="pill" type="button" data-filter="dsh" aria-pressed="false">DSH</button>
+        <button class="pill" type="button" data-filter="astrbot" aria-pressed="false">手机 QQ</button>
+        <button class="pill" type="button" data-filter="agentmail" aria-pressed="false">邮件端</button>
+      </div>
+
+      <div class="controls">
+        <div class="zoom-group" role="group" aria-label="画布缩放">
+          <button class="ctrl-btn" id="zoom-out" type="button" aria-label="缩小画布" title="缩小">−</button>
+          <span class="zoom-readout" id="zoom-readout" aria-live="polite">100%</span>
+          <button class="ctrl-btn" id="zoom-in" type="button" aria-label="放大画布" title="放大">+</button>
+        </div>
+        <button class="ctrl-btn reset-btn" id="reset-btn" type="button" title="重置视图与通路筛选">适应</button>
+        <button class="theme-toggle" id="theme-btn" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path>
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
-  <figure>
-    <svg class="topology" id="topology" viewBox="0 0 1220 700" role="img"
-         aria-labelledby="dgm-title dgm-desc">
+  <figure class="canvas-stage" id="canvas-stage">
+    <svg class="topology" id="topology" viewBox="0 0 1080 730" preserveAspectRatio="xMidYMid meet"
+         role="img" aria-labelledby="dgm-title dgm-desc">
       <title id="dgm-title">Ark v2 全渠道交互架构图</title>
       <desc id="dgm-desc">
-        Obsidian 插件、Claude Code、DSH 等宿主通过 /mcp 与 /v1 连接本机唯一的 ark serve 进程；
+        Obsidian 插件、Claude Code、DSH 与手机 QQ（经 AstrBot）通过 /mcp 与 /v1 连接本机唯一的 ark serve 进程（均已完成实机验收）；
         ark-agent 与 ark-core 在同一进程内，agent 只经 MCP 客户端接口调用 core；
         core 写入 Vault Markdown 并为每次操作建一个 Git 快照；采集扩展以 MCP stdio 子进程运行，只返回素材；
-        手机 QQ 经 AstrBot 连 /mcp，邮件经腾讯 AgentMail MCP 由 agent 出站调用，两者均属标准 MCP 扩展接入、尚未实机验收。
+        邮件经腾讯 AgentMail MCP 由 agent 出站调用，属标准 MCP 协议扩展接入、尚未实机验收。
       </desc>
 
       <defs>
-        <marker id="arw-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"></path>
+        <marker id="arw-line" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--line-strong)"></path>
         </marker>
-        <marker id="arw-verified" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--verified)"></path>
+        <marker id="arw-verified" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--verified)"></path>
         </marker>
-        <marker id="arw-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--ext)"></path>
+        <marker id="arw-ext" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--ext)"></path>
         </marker>
       </defs>
 
-      <!-- column headers -->
-      <text class="col-label" x="30" y="46">渠道 / 宿主</text>
-      <text class="col-label" x="330" y="46">协议面</text>
-      <text class="col-label" x="580" y="46">ark serve 单进程</text>
-      <text class="col-label" x="880" y="46">真源与外部系统</text>
+      <!-- Column headers -->
+      <text class="col-label" x="24" y="30">01 · 渠道与宿主</text>
+      <text class="col-label" x="292" y="30">02 · 协议面</text>
+      <text class="col-label" x="524" y="30">03 · ark serve 单进程</text>
+      <text class="col-label" x="808" y="30">04 · 真源与外部系统</text>
 
-      <!-- ark serve container -->
-      <rect class="zone" x="558" y="72" width="262" height="596" rx="12"></rect>
-      <text class="zone-label" x="570" y="672">127.0.0.1:8650 · Bearer token</text>
+      <!-- ark serve process boundary -->
+      <rect class="zone" x="524" y="46" width="238" height="664" rx="14"></rect>
+      <rect class="zone-badge" x="546" y="682" width="194" height="20" rx="10"></rect>
+      <text class="zone-label" x="643" y="696" text-anchor="middle">127.0.0.1:8650 · Bearer</text>
 
-      <!-- ============ channels ============ -->
+      <!-- ============ 01 · Channels ============ -->
       <g class="node verified" id="nd-obsidian" tabindex="0" role="button"
          aria-label="Obsidian 插件，已完成人工验收，连接 /v1 与 /mcp"
          data-route="obsidian">
-        <rect x="30" y="100" width="210" height="64" rx="9"></rect>
-        <text class="n-title" x="44" y="124">Obsidian 插件</text>
-        <text class="n-sub" x="44" y="142">对话 / 历史 / 记忆 / 设置 四面板</text>
-        <text class="n-mono" x="44" y="156">TypeScript · 仅桌面</text>
-        <rect class="chip-bg chip-verified" x="177" y="106" width="55" height="15"></rect>
-        <text class="chip-text verified" x="182" y="117">人工验收</text>
+        <rect class="body" x="24" y="56" width="224" height="92" rx="10"></rect>
+        <text class="n-title" x="38" y="82">Obsidian 插件</text>
+        <rect class="chip-verified" x="166" y="66" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="200" y="80">人工验收</text>
+        <text class="n-sub" x="38" y="108">对话 / 历史 / 记忆 / 设置 四面板</text>
+        <text class="n-mono" x="38" y="130">TypeScript · 8 步实机全过</text>
       </g>
 
       <g class="node verified" id="nd-claude" tabindex="0" role="button"
          aria-label="Claude Code 2.1.304，已完成实机验收，只连 /mcp"
          data-route="claude-code">
-        <rect x="30" y="190" width="210" height="64" rx="9"></rect>
-        <text class="n-title" x="44" y="214">Claude Code</text>
-        <text class="n-sub" x="44" y="232">2.1.304 · Opus 5.5</text>
-        <text class="n-mono" x="44" y="246">mcp-remote 0.15.2 桥接</text>
-        <rect class="chip-bg chip-verified" x="177" y="196" width="55" height="15"></rect>
-        <text class="chip-text verified" x="182" y="207">实机验收</text>
+        <rect class="body" x="24" y="168" width="224" height="92" rx="10"></rect>
+        <text class="n-title" x="38" y="194">Claude Code</text>
+        <rect class="chip-verified" x="166" y="178" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="200" y="192">实机验收</text>
+        <text class="n-sub" x="38" y="220">v2.1.304 · Opus 5.5 四步通过</text>
+        <text class="n-mono" x="38" y="242">mcp-remote 0.15.2 桥接</text>
       </g>
 
       <g class="node verified" id="nd-dsh" tabindex="0" role="button"
          aria-label="DSH 0.1.0-rc.7，已完成实机验收，只连 /mcp"
          data-route="dsh">
-        <rect x="30" y="280" width="210" height="64" rx="9"></rect>
-        <text class="n-title" x="44" y="304">DSH</text>
-        <text class="n-sub" x="44" y="322">DeepSeek Harness 0.1.0-rc.7</text>
-        <text class="n-mono" x="44" y="336">Cordis YAML · desktop profile</text>
-        <rect class="chip-bg chip-verified" x="177" y="286" width="55" height="15"></rect>
-        <text class="chip-text verified" x="182" y="297">实机验收</text>
+        <rect class="body" x="24" y="280" width="224" height="92" rx="10"></rect>
+        <text class="n-title" x="38" y="306">DSH</text>
+        <rect class="chip-verified" x="166" y="290" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="200" y="304">实机验收</text>
+        <text class="n-sub" x="38" y="332">DeepSeek Harness 0.1.0-rc.7</text>
+        <text class="n-mono" x="38" y="354">Cordis YAML · desktop 配置</text>
       </g>
 
-      <g class="node ext" id="nd-astrbot" tabindex="0" role="button"
-         aria-label="手机 QQ 经 AstrBot 连接 /mcp，属标准 MCP 扩展接入，尚未实机验收"
+      <g class="node verified" id="nd-astrbot" tabindex="0" role="button"
+         aria-label="手机 QQ 经 AstrBot 连接 /mcp，已完成实机验收"
          data-route="astrbot">
-        <rect x="30" y="470" width="210" height="70" rx="9"></rect>
-        <text class="n-title" x="44" y="494">手机 QQ</text>
-        <text class="n-sub" x="44" y="512">经 AstrBot · streamable_http</text>
-        <text class="n-mono" x="44" y="530">人格提示词由 3 份 SKILL.md 拼接</text>
-        <rect class="chip-bg chip-ext" x="177" y="476" width="55" height="15"></rect>
-        <text class="chip-text ext" x="182" y="487">扩展接入</text>
+        <rect class="body" x="24" y="458" width="224" height="98" rx="10"></rect>
+        <text class="n-title" x="38" y="484">手机 QQ</text>
+        <rect class="chip-verified" x="166" y="468" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="200" y="482">实机验收</text>
+        <text class="n-sub" x="38" y="510">经 AstrBot · streamable_http</text>
+        <text class="n-mono" x="38" y="534">共享 Collect 与 Tasks 已验收</text>
       </g>
 
-      <!-- ============ protocol surface ============ -->
+      <!-- On-canvas grade key -->
+      <g aria-hidden="true">
+        <rect class="legend-card" x="24" y="588" width="224" height="122" rx="10"></rect>
+        <text class="n-title" x="38" y="614">证据分级口径</text>
+        <text class="n-sub" x="38" y="640">● 实线：已完成实机 / 自动验收</text>
+        <text class="n-sub" x="38" y="662">◌ 虚线：标准 MCP 扩展（未验收）</text>
+        <text class="n-mono" x="38" y="688">单机单脑 · 零跨端状态同步</text>
+      </g>
+
+      <!-- ============ 02 · Protocol Surface ============ -->
       <g class="node core" id="nd-v1" tabindex="0" role="button"
          aria-label="/v1 接口，OpenAI 兼容 SSE 与动作确认"
          data-route="obsidian">
-        <rect x="330" y="100" width="180" height="130" rx="9"></rect>
-        <text class="n-title" x="344" y="124">/v1</text>
-        <text class="n-sub" x="344" y="144">OpenAI 兼容 SSE</text>
-        <text class="n-mono" x="344" y="160">/v1/chat/completions</text>
-        <text class="n-mono" x="344" y="175">/v1/models</text>
-        <text class="n-mono" x="344" y="190">/v1/actions/&lt;id&gt; 批准/拒绝</text>
-        <text class="n-mono" x="344" y="205">/v1/plugins/&lt;name&gt;/…</text>
-        <text class="n-sub" x="344" y="221">未配置对话模型时返回 404</text>
+        <rect class="body" x="292" y="56" width="192" height="158" rx="10"></rect>
+        <text class="n-title" x="306" y="82">/v1</text>
+        <rect class="chip-core" x="352" y="66" width="118" height="20" rx="10"></rect>
+        <text class="chip-text core" x="411" y="80">OpenAI 兼容 SSE</text>
+        <text class="n-mono" x="306" y="108">/v1/chat/completions</text>
+        <text class="n-mono" x="306" y="128">/v1/models</text>
+        <text class="n-mono" x="306" y="148">/v1/actions/&lt;id&gt; 审批</text>
+        <text class="n-mono" x="306" y="168">/v1/plugins/&lt;name&gt;/…</text>
+        <text class="n-sub" x="306" y="194">未配对话模型时返回 404</text>
       </g>
 
       <g class="node core" id="nd-mcp" tabindex="0" role="button"
          aria-label="/mcp 接口，MCP Streamable HTTP，发布 Core 工具与插件工具"
          data-route="obsidian claude-code dsh astrbot">
-        <rect x="330" y="270" width="180" height="330" rx="9"></rect>
-        <text class="n-title" x="344" y="294">/mcp</text>
-        <text class="n-sub" x="344" y="313">MCP Streamable HTTP</text>
-        <text class="n-sub" x="344" y="337">Core 工具与 Ark 插件工具</text>
-        <text class="n-sub" x="344" y="353">都在这里发布</text>
-        <text class="n-mono" x="344" y="377">vault：search read write</text>
-        <text class="n-mono" x="344" y="392">       patch move links</text>
-        <text class="n-mono" x="344" y="407">context：resume checkpoint</text>
-        <text class="n-mono" x="344" y="422">memory：remember confirm</text>
-        <text class="n-mono" x="344" y="437">history：history undo</text>
-        <text class="n-sub" x="344" y="461">宿主只连这一个入口，</text>
-        <text class="n-sub" x="344" y="477">扩展工具由 Core 转发发布</text>
-        <text class="n-mono" x="344" y="501">Host / Origin 校验</text>
-        <text class="n-mono" x="344" y="516">同一套 Bearer token</text>
-        <text class="n-sub" x="344" y="542">不开放到局域网也照样要 token</text>
-        <text class="n-sub" x="344" y="566">扩展是 MCP stdio 子进程，</text>
-        <text class="n-sub" x="344" y="582">宿主不直接连它们</text>
+        <rect class="body" x="292" y="244" width="192" height="352" rx="10"></rect>
+        <text class="n-title" x="306" y="270">/mcp</text>
+        <rect class="chip-core" x="358" y="254" width="112" height="20" rx="10"></rect>
+        <text class="chip-text core" x="414" y="268">Streamable HTTP</text>
+        <text class="n-sub" x="306" y="296">Core 与插件工具统一发布</text>
+        <line class="n-divider" x1="306" y1="310" x2="470" y2="310"></line>
+        <text class="n-mono" x="306" y="330">vault · search / read</text>
+        <text class="n-mono" x="306" y="350">        write / patch</text>
+        <text class="n-mono" x="306" y="370">context · resume / save</text>
+        <text class="n-mono" x="306" y="390">memory · remember</text>
+        <text class="n-mono" x="306" y="410">         confirm / edit</text>
+        <text class="n-mono" x="306" y="430">history · history / undo</text>
+        <line class="n-divider" x1="306" y1="446" x2="470" y2="446"></line>
+        <text class="n-sub" x="306" y="468">扩展工具由 Core 转发发布</text>
+        <text class="n-sub" x="306" y="490">宿主不直连 stdio 子进程</text>
+        <text class="n-mono" x="306" y="516">Host / Origin 防重绑校验</text>
+        <text class="n-mono" x="306" y="536">本机回环同样强制 Bearer</text>
+        <text class="n-sub" x="306" y="566">全部外部宿主唯一入口</text>
       </g>
 
-      <!-- ============ inside ark serve ============ -->
+      <!-- ============ 03 · Inside ark serve ============ -->
       <g class="node" id="nd-agent" tabindex="0" role="button"
          aria-label="ark-agent，回环、Skill、调度器与插件宿主，只经 MCP 客户端接口调用 ark-core"
          data-route="obsidian claude-code dsh astrbot agentmail">
-        <rect x="580" y="120" width="230" height="140" rx="9"></rect>
-        <text class="n-title" x="594" y="144">ark-agent</text>
-        <text class="n-sub" x="594" y="164">agent 回环 · Skill 渐进加载</text>
-        <text class="n-sub" x="594" y="180">cron 调度器（含 catch_up 补跑）</text>
-        <text class="n-sub" x="594" y="196">Ark 插件宿主 · 外部写动作确认</text>
-        <text class="n-mono" x="594" y="220">不 import core 内部模块</text>
-        <text class="n-mono" x="594" y="236">只经 MCP 客户端接口调用</text>
-        <text class="n-sub" x="594" y="252">自家 agent 也没有内部捷径</text>
+        <rect class="body" x="538" y="64" width="210" height="168" rx="10"></rect>
+        <text class="n-title" x="552" y="90">ark-agent</text>
+        <text class="n-sub" x="552" y="114">Agent 回环 · Skill 渐进加载</text>
+        <text class="n-sub" x="552" y="135">cron 调度器（含 catch_up）</text>
+        <text class="n-sub" x="552" y="156">插件宿主 · 外部写动作确认</text>
+        <text class="n-mono" x="552" y="180">不 import core 内部模块</text>
+        <text class="n-mono" x="552" y="200">仅经进程内 MCP 客户端调用</text>
+        <text class="n-sub" x="552" y="220">自家回环同样没有内部捷径</text>
       </g>
 
-      <g class="node" id="nd-core" tabindex="0" role="button"
+      <g class="node core" id="nd-core" tabindex="0" role="button"
          aria-label="ark-core，vault / context / memory / history 四个子系统，唯一写 Vault 的地方"
          data-route="obsidian claude-code dsh astrbot agentmail">
-        <rect x="580" y="300" width="230" height="170" rx="9"></rect>
-        <text class="n-title" x="594" y="324">ark-core</text>
-        <text class="n-sub" x="594" y="344">vault · context · memory · history</text>
-        <text class="n-mono" x="594" y="366">路径守卫：raw/ 只读</text>
-        <text class="n-mono" x="594" y="381">拒绝点开头路径与 ark.toml</text>
-        <text class="n-mono" x="594" y="396">常驻层 2k / 按需层 4k token</text>
-        <text class="n-mono" x="594" y="411">rev 与 base_rev 乐观并发</text>
-        <text class="n-mono" x="594" y="426">过期写入 → .pending/ 待合并</text>
-        <text class="n-mono" x="594" y="441">trace = off | summary | full</text>
-        <text class="n-sub" x="594" y="460">唯一会写 Vault 的地方</text>
+        <rect class="body" x="538" y="274" width="210" height="202" rx="10"></rect>
+        <text class="n-title" x="552" y="300">ark-core</text>
+        <rect class="chip-core" x="652" y="284" width="82" height="20" rx="10"></rect>
+        <text class="chip-text core" x="693" y="298">唯一写入口</text>
+        <text class="n-sub" x="552" y="324">笔记·上下文·记忆·历史 四子系统</text>
+        <text class="n-mono" x="552" y="348">路径守卫：raw/ 强制只读</text>
+        <text class="n-mono" x="552" y="368">拒写点开头路径与 ark.toml</text>
+        <text class="n-mono" x="552" y="388">常驻 2k / 按需 4k 双层预算</text>
+        <text class="n-mono" x="552" y="408">rev 与 base_rev 乐观并发</text>
+        <text class="n-mono" x="552" y="428">过期写入 → .pending/ 待合并</text>
+        <text class="n-mono" x="552" y="448">trace = off | summary | full</text>
+        <text class="n-sub" x="552" y="467">所有渠道读写在此汇合</text>
       </g>
 
       <g class="node" id="nd-plugins" tabindex="0" role="button"
          aria-label="Ark 插件 tasks / collect / workshop，数据只放 Vault Markdown"
          data-route="astrbot obsidian">
-        <rect x="580" y="520" width="230" height="120" rx="9"></rect>
-        <text class="n-title" x="594" y="544">Ark 插件</text>
-        <text class="n-mono" x="594" y="564">tasks（已交付）</text>
-        <text class="n-mono" x="594" y="579">collect · workshop（在做）</text>
-        <text class="n-sub" x="594" y="599">数据只放 Vault Markdown，</text>
-        <text class="n-sub" x="594" y="615">不建私有库；工具同样导出到 /mcp</text>
-        <text class="n-mono" x="594" y="632">[plugins] enabled 显式名单</text>
+        <rect class="body" x="538" y="518" width="210" height="154" rx="10"></rect>
+        <text class="n-title" x="552" y="544">Ark 插件</text>
+        <text class="n-mono" x="552" y="568">tasks（658 例自动验收）</text>
+        <text class="n-mono" x="552" y="588">collect · workshop（在研）</text>
+        <text class="n-sub" x="552" y="612">数据只放 Vault Markdown</text>
+        <text class="n-sub" x="552" y="632">不建私有库 · 工具导出 /mcp</text>
+        <text class="n-mono" x="552" y="655">[plugins] enabled 显式名单</text>
       </g>
 
-      <!-- ============ truth source and outside world ============ -->
+      <!-- ============ 04 · Truth Source & Outside World ============ -->
       <g class="node ext" id="nd-mail" tabindex="0" role="button"
          aria-label="邮件端，经腾讯 AgentMail MCP 出站，属标准 MCP 扩展接入，发信需确认"
          data-route="agentmail">
-        <rect x="880" y="100" width="300" height="104" rx="9"></rect>
-        <text class="n-title" x="894" y="124">邮件端 · 腾讯 AgentMail MCP</text>
-        <text class="n-sub" x="894" y="144">现成 IMAP / SMTP MCP server</text>
-        <text class="n-mono" x="894" y="160">ark-agent 经 mcp.json 出站连接</text>
-        <text class="n-mono" x="894" y="175">收信 = 采集来源（只返回素材）</text>
-        <text class="n-mono" x="894" y="190">发信 = 外部写动作，执行前确认</text>
-        <rect class="chip-bg chip-ext" x="1117" y="106" width="55" height="15"></rect>
-        <text class="chip-text ext" x="1122" y="117">扩展接入</text>
+        <rect class="body" x="808" y="64" width="248" height="132" rx="10"></rect>
+        <text class="n-title" x="822" y="90">邮件端 · AgentMail</text>
+        <rect class="chip-ext" x="974" y="74" width="68" height="20" rx="10"></rect>
+        <text class="chip-text ext" x="1008" y="88">扩展接入</text>
+        <text class="n-sub" x="822" y="114">腾讯 AgentMail MCP（IMAP/SMTP）</text>
+        <text class="n-mono" x="822" y="136">ark-agent 经 mcp.json 出站</text>
+        <text class="n-mono" x="822" y="156">收信只返素材 · 发信先经确认</text>
+        <text class="n-mono" x="822" y="176">标准协议方向 · 未实机验收</text>
       </g>
 
       <g class="node verified" id="nd-vault" tabindex="0" role="button"
          aria-label="Vault 里的 Markdown，唯一真源"
          data-route="obsidian claude-code dsh astrbot agentmail">
-        <rect x="880" y="248" width="300" height="102" rx="9"></rect>
-        <text class="n-title" x="894" y="272">Vault Markdown · 唯一真源</text>
-        <text class="n-sub" x="894" y="292">笔记是真相，索引与缓存都是派生物</text>
-        <text class="n-mono" x="894" y="308">ark/threads/&lt;slug&gt;.md  Live State</text>
-        <text class="n-mono" x="894" y="323">ark/memory/&lt;id&gt;.md  一条一个文件</text>
-        <text class="n-mono" x="894" y="338">删掉 .ark/index.db 可完整重建</text>
-        <rect class="chip-bg chip-verified" x="1107" y="254" width="65" height="15"></rect>
-        <text class="chip-text verified" x="1112" y="265">文件即真源</text>
+        <rect class="body" x="808" y="224" width="248" height="134" rx="10"></rect>
+        <text class="n-title" x="822" y="250">Vault Markdown</text>
+        <rect class="chip-verified" x="974" y="234" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="1008" y="248">唯一真源</text>
+        <text class="n-sub" x="822" y="274">笔记即真相，索引与缓存皆可重建</text>
+        <text class="n-mono" x="822" y="296">ark/threads/&lt;slug&gt;.md 断点</text>
+        <text class="n-mono" x="822" y="316">ark/memory/&lt;id&gt;.md 记忆条目</text>
+        <text class="n-mono" x="822" y="336">删掉 .ark/index.db 完整恢复</text>
       </g>
 
       <g class="node verified" id="nd-git" tabindex="0" role="button"
          aria-label="Git 快照，一次操作一个，可一键撤销"
          data-route="obsidian claude-code dsh astrbot agentmail">
-        <rect x="880" y="390" width="300" height="92" rx="9"></rect>
-        <text class="n-title" x="894" y="414">Git 快照 · 一次操作一个</text>
-        <text class="n-mono" x="894" y="434">ark(&lt;source&gt;): &lt;操作&gt; &lt;路径&gt;</text>
-        <text class="n-sub" x="894" y="452">一轮对话 / 一次插件请求 /</text>
-        <text class="n-sub" x="894" y="468">一次定时任务运行 = 一个快照</text>
-        <rect class="chip-bg chip-verified" x="1128" y="396" width="44" height="15"></rect>
-        <text class="chip-text verified" x="1133" y="407">可撤销</text>
+        <rect class="body" x="808" y="386" width="248" height="122" rx="10"></rect>
+        <text class="n-title" x="822" y="412">Git 快照</text>
+        <rect class="chip-verified" x="974" y="396" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="1008" y="410">一键撤销</text>
+        <text class="n-mono" x="822" y="436">ark(&lt;source&gt;): &lt;操作&gt; &lt;路径&gt;</text>
+        <text class="n-sub" x="822" y="460">一轮对话 / 一次插件请求 /</text>
+        <text class="n-sub" x="822" y="482">一次定时任务运行 = 单个快照</text>
       </g>
 
       <g class="node verified" id="nd-ext" tabindex="0" role="button"
          aria-label="采集扩展子进程 ark-bili 与 ark-article，MCP stdio，只返回素材"
          data-route="claude-code dsh obsidian astrbot">
-        <rect x="880" y="522" width="300" height="110" rx="9"></rect>
-        <text class="n-title" x="894" y="546">采集扩展 · MCP stdio 子进程</text>
-        <text class="n-mono" x="894" y="566">ark-bili：元信息 / 字幕 / 转写</text>
-        <text class="n-mono" x="894" y="581">ark-article：公众号与网页抓取清洗</text>
-        <text class="n-sub" x="894" y="601">只返回素材，不写 Vault，互不 import</text>
-        <text class="n-mono" x="894" y="618">由 core 按 [core] extensions 拉起</text>
-        <rect class="chip-bg chip-verified" x="1118" y="528" width="54" height="15"></rect>
-        <text class="chip-text verified" x="1123" y="539">自动验收</text>
+        <rect class="body" x="808" y="536" width="248" height="136" rx="10"></rect>
+        <text class="n-title" x="822" y="562">采集扩展子进程</text>
+        <rect class="chip-verified" x="974" y="546" width="68" height="20" rx="10"></rect>
+        <text class="chip-text verified" x="1008" y="560">自动验收</text>
+        <text class="n-mono" x="822" y="586">ark-bili：元信息 / 字幕 / 转写</text>
+        <text class="n-mono" x="822" y="606">ark-article：公众号与网页清洗</text>
+        <text class="n-sub" x="822" y="630">MCP stdio · 只返素材不写 Vault</text>
+        <text class="n-mono" x="822" y="652">由 core 按 [core] extensions 拉起</text>
       </g>
 
-      <!-- ============ edges ============ -->
+      <!-- ============ Connectors ============ -->
       <!-- Obsidian → /v1 -->
       <path class="edge verified" id="e-obs-v1" data-route="obsidian"
-            d="M240,128 L330,148" marker-end="url(#arw-verified)"></path>
-      <!-- Obsidian → /mcp (memory/history panels call Core directly) -->
+            d="M248,94 C270,94 270,116 290,116" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="obsidian" d="M248,94 C270,94 270,116 290,116"></path>
+
+      <!-- Obsidian → /mcp -->
       <path class="edge verified" id="e-obs-mcp" data-route="obsidian"
-            d="M240,152 C285,290 285,300 330,306" marker-end="url(#arw-verified)"></path>
-      <text class="edge-label" x="252" y="238" data-route="obsidian">记忆/历史面板直连 Core</text>
+            d="M248,120 C274,120 268,282 290,282" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="obsidian" d="M248,120 C274,120 268,282 290,282"></path>
+      <text class="edge-label" x="270" y="204" data-route="obsidian">面板直连</text>
+
       <!-- Claude Code → /mcp -->
       <path class="edge verified" id="e-claude-mcp" data-route="claude-code"
-            d="M240,222 L330,362" marker-end="url(#arw-verified)"></path>
+            d="M248,214 C272,214 270,340 290,340" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="claude-code" d="M248,214 C272,214 270,340 290,340"></path>
+
       <!-- DSH → /mcp -->
       <path class="edge verified" id="e-dsh-mcp" data-route="dsh"
-            d="M240,312 L330,424" marker-end="url(#arw-verified)"></path>
+            d="M248,326 C270,326 270,396 290,396" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="dsh" d="M248,326 C270,326 270,396 290,396"></path>
+
       <!-- AstrBot QQ → /mcp -->
-      <path class="edge ext" id="e-astrbot-mcp" data-route="astrbot"
-            d="M240,502 L330,486" marker-end="url(#arw-ext)"></path>
-      <text class="edge-label" x="196" y="452" data-route="astrbot">只配这一个 server</text>
+      <path class="edge verified" id="e-astrbot-mcp" data-route="astrbot"
+            d="M248,506 C270,506 270,502 290,502" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="astrbot" d="M248,506 C270,506 270,502 290,502"></path>
+      <text class="edge-label" x="270" y="528" data-route="astrbot">单入口</text>
 
       <!-- /v1 → ark-agent -->
       <path class="edge" id="e-v1-agent" data-route="obsidian"
-            d="M510,166 L580,190" marker-end="url(#arw-line)"></path>
+            d="M484,135 C510,135 510,144 536,144" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="obsidian" d="M484,135 C510,135 510,144 536,144"></path>
+
       <!-- /mcp → ark-core -->
       <path class="edge" id="e-mcp-core" data-route="obsidian claude-code dsh astrbot"
-            d="M510,372 L580,380" marker-end="url(#arw-line)"></path>
+            d="M484,376 L536,376" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="obsidian claude-code dsh astrbot" d="M484,376 L536,376"></path>
+
       <!-- /mcp → plugins -->
       <path class="edge" id="e-mcp-plugins" data-route="astrbot obsidian"
-            d="M510,556 L580,566" marker-end="url(#arw-line)"></path>
+            d="M484,548 C510,548 510,584 536,584" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="astrbot obsidian" d="M484,548 C510,548 510,584 536,584"></path>
 
-      <!-- ark-agent ↔ ark-core (MCP client, in-process transport) -->
+      <!-- ark-agent → ark-core -->
       <path class="edge" id="e-agent-core" data-route="obsidian claude-code dsh astrbot agentmail"
-            d="M695,260 L695,300" marker-end="url(#arw-line)"></path>
-      <text class="edge-label" x="703" y="284" data-route="obsidian claude-code dsh astrbot agentmail">MCP 客户端</text>
+            d="M643,232 L643,272" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="obsidian claude-code dsh astrbot agentmail" d="M643,232 L643,272"></path>
+      <text class="edge-label" x="643" y="256" data-route="obsidian claude-code dsh astrbot agentmail">MCP 客户端</text>
 
-      <!-- plugins → ark-core (ctx.vault writes go through Core) -->
+      <!-- plugins → ark-core -->
       <path class="edge" id="e-plugins-core" data-route="astrbot obsidian"
-            d="M695,520 L695,470" marker-end="url(#arw-line)"></path>
-      <text class="edge-label" x="703" y="500" data-route="astrbot obsidian">ctx.vault</text>
+            d="M643,518 L643,478" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="astrbot obsidian" d="M643,518 L643,478"></path>
+      <text class="edge-label" x="643" y="502" data-route="astrbot obsidian">ctx.vault</text>
 
-      <!-- ark-agent → AgentMail (outbound MCP client) -->
+      <!-- ark-agent → AgentMail -->
       <path class="edge ext" id="e-agent-mail" data-route="agentmail"
-            d="M810,152 L880,152" marker-end="url(#arw-ext)"></path>
-      <text class="edge-label" x="812" y="144" data-route="agentmail">出站 + 确认</text>
+            d="M748,130 L806,130" marker-end="url(#arw-ext)"></path>
+      <path class="edge-hit" data-route="agentmail" d="M748,130 L806,130"></path>
+      <text class="edge-label" x="777" y="120" data-route="agentmail">出站+确认</text>
 
       <!-- ark-core → Vault -->
       <path class="edge verified" id="e-core-vault" data-route="obsidian claude-code dsh astrbot agentmail"
-            d="M810,336 L880,300" marker-end="url(#arw-verified)"></path>
-      <text class="edge-label" x="812" y="330" data-route="obsidian claude-code dsh astrbot agentmail">写入 + 快照</text>
+            d="M748,332 C778,332 778,292 806,292" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="obsidian claude-code dsh astrbot agentmail" d="M748,332 C778,332 778,292 806,292"></path>
+      <text class="edge-label" x="777" y="302" data-route="obsidian claude-code dsh astrbot agentmail">写入</text>
+
       <!-- ark-core → Git -->
       <path class="edge verified" id="e-core-git" data-route="obsidian claude-code dsh astrbot agentmail"
-            d="M810,396 L880,430" marker-end="url(#arw-verified)"></path>
-      <!-- ark-core ↔ extensions -->
+            d="M748,410 C778,410 778,448 806,448" marker-end="url(#arw-verified)"></path>
+      <path class="edge-hit" data-route="obsidian claude-code dsh astrbot agentmail" d="M748,410 C778,410 778,448 806,448"></path>
+      <text class="edge-label" x="777" y="422" data-route="obsidian claude-code dsh astrbot agentmail">单快照</text>
+
+      <!-- ark-core → Extensions -->
       <path class="edge" id="e-core-ext" data-route="claude-code dsh obsidian astrbot"
-            d="M810,452 L880,560" marker-end="url(#arw-line)"></path>
-      <text class="edge-label" x="800" y="520" data-route="claude-code dsh obsidian astrbot">拉起 + 转发工具</text>
+            d="M748,452 C782,452 776,604 806,604" marker-end="url(#arw-line)"></path>
+      <path class="edge-hit" data-route="claude-code dsh obsidian astrbot" d="M748,452 C782,452 776,604 806,604"></path>
+      <text class="edge-label" x="778" y="544" data-route="claude-code dsh obsidian astrbot">拉起转发</text>
     </svg>
   </figure>
 
-  <div class="legend">
-    <span class="key"><i class="verified"></i>已完成实机 / 自动验收</span>
-    <span class="key"><i class="ext"></i>标准 MCP 协议扩展接入（未实机验收）</span>
-    <span class="key"><i class="core"></i>进程内协议面</span>
-    <span class="key">悬停或聚焦任一节点，只看它自己那条通路</span>
+  <div class="status-strip">
+    <div class="legend">
+      <span class="key"><i class="verified"></i>已完成实机 / 自动验收</span>
+      <span class="key"><i class="ext"></i>标准 MCP 协议扩展接入（未实机验收）</span>
+      <span class="key"><i class="core"></i>进程内协议面</span>
+    </div>
+    <span class="stage-hint">滚轮缩放 · 拖拽平移 · 悬停或点击节点聚焦通路</span>
   </div>
 
-  <div class="notes">
+  <div class="notes embed-hide">
     <div class="note verified">
       <strong>已完成实机 / 自动验收（绿色实线）。</strong>
       Obsidian 插件 2026-11-16 人工验收 8 步全过；Claude Code 2.1.304 与 DSH 0.1.0-rc.7 于 2026-11-01
-      实机四步通过（提问、引用、写笔记、撤销）；调度器与插件宿主 2026-11-18 由真实 <code>ark serve</code>
-      的场景用例自动验收，全仓 658 例同时运行。同一批里<strong>没有</strong>人工走过的两项照实记：
-      真实 Obsidian 的在线提醒与拖动、真实模型的规划与拆分。
+      实机四步通过（提问、引用、写笔记、撤销）；手机 QQ 经 AstrBot（<code>streamable_http</code> 连
+      <code>/mcp</code>）已完成私聊共享 Collect 采集与 Tasks 任务工作流实机验收；调度器与插件宿主
+      2026-11-18 由真实 <code>ark serve</code> 的场景用例自动验收，全仓 658 例同时运行。
     </div>
     <div class="note ext">
       <strong>标准 MCP 协议扩展接入（虚线，未实机验收）。</strong>
-      手机 QQ 经 AstrBot 用 <code>streamable_http</code> 连 <code>/mcp</code>，示例对照 AstrBot v4.29.4
-      源码核对过，<strong>没有在真实 AstrBot 上跑过</strong>，清单见 <code>docs/acceptance-astrbot.md</code>；
-      邮件按设计「优先选用现成的 IMAP/SMTP MCP server」，腾讯 AgentMail 属这条路径，仓库内
-      <strong>没有</strong>针对它的专门接入配置记录。两者都不写成「已验收通过」。
+      邮件按设计「优先选用现成的 IMAP/SMTP MCP server」，腾讯 AgentMail 属这条路径（收信作采集来源，发信属外部写动作需事前确认），仓库内
+      <strong>没有</strong>针对它的专门实机验收记录，因此如实标为标准协议扩展方向，不写成「已验收通过」。
     </div>
   </div>
 </div>
@@ -501,96 +1156,268 @@
 <script>
   (function () {
     var html = document.documentElement
+    var stage = document.getElementById('canvas-stage')
     var svg = document.getElementById('topology')
     var themeBtn = document.getElementById('theme-btn')
     var resetBtn = document.getElementById('reset-btn')
-    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    var zoomInBtn = document.getElementById('zoom-in')
+    var zoomOutBtn = document.getElementById('zoom-out')
+    var zoomReadout = document.getElementById('zoom-readout')
+    var filterBtns = Array.prototype.slice.call(document.querySelectorAll('.pill[data-filter]'))
+    var DIAGRAM_KEY = 'ark-diagram-theme'
 
-    /* ---- theme: ?theme= → localStorage → system ---- */
-    function readInitialTheme() {
-      try {
-        var param = new URLSearchParams(location.search).get('theme')
-        if (param === 'light' || param === 'dark') return param
-      } catch (_) {}
-      try {
-        var saved = localStorage.getItem('ark-diagram-theme')
-        if (saved === 'light' || saved === 'dark') return saved
-      } catch (_) {}
+    /* ---- Theme sync: ?theme= → diagram localStorage → blog 'theme' → system ---- */
+    function resolveBlogTheme(raw) {
+      if (raw === 'light' || raw === 'dark') return raw
       return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
     }
 
-    function applyTheme(theme, persist) {
-      html.setAttribute('data-theme', theme)
-      var isDark = theme === 'dark'
-      themeBtn.textContent = isDark ? '浅色主题' : '深色主题'
-      themeBtn.setAttribute('aria-pressed', String(isDark))
-      if (persist) {
-        try { localStorage.setItem('ark-diagram-theme', theme) } catch (_) {}
+    function applyTheme(theme, persistLocal) {
+      var next = theme === 'light' ? 'light' : 'dark'
+      html.setAttribute('data-theme', next)
+      themeBtn.setAttribute('aria-label', next === 'dark' ? '切换到浅色主题' : '切换到深色主题')
+      if (persistLocal) {
+        try { localStorage.setItem(DIAGRAM_KEY, next) } catch (_) {}
       }
     }
 
-    applyTheme(readInitialTheme(), false)
+    applyTheme(html.getAttribute('data-theme'), false)
+
     themeBtn.addEventListener('click', function () {
       applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark', true)
     })
 
-    /* ---- focus on hover / focus: light one route, dim the rest ---- */
+    window.addEventListener('storage', function (event) {
+      if (event.key === DIAGRAM_KEY && (event.newValue === 'light' || event.newValue === 'dark')) {
+        applyTheme(event.newValue, false)
+      } else if (event.key === 'theme') {
+        try { localStorage.removeItem(DIAGRAM_KEY) } catch (_) {}
+        applyTheme(resolveBlogTheme(event.newValue), false)
+      }
+    })
+
+    try {
+      if (window.self !== window.top && window.parent && window.parent.document) {
+        var parentHtml = window.parent.document.documentElement
+        var mo = new MutationObserver(function () {
+          var parentDark = parentHtml.classList.contains('dark')
+          applyTheme(parentDark ? 'dark' : 'light', false)
+        })
+        mo.observe(parentHtml, { attributes: true, attributeFilter: ['class'] })
+      }
+    } catch (_) {}
+
+    /* ---- Filter pills + Hover / Focus spotlighting ---- */
     var nodes = Array.prototype.slice.call(svg.querySelectorAll('.node'))
     var edges = Array.prototype.slice.call(svg.querySelectorAll('.edge'))
+    var edgeHits = Array.prototype.slice.call(svg.querySelectorAll('.edge-hit'))
     var labels = Array.prototype.slice.call(svg.querySelectorAll('.edge-label'))
 
-    function routesOf(element) {
-      var raw = element.getAttribute('data-route') || ''
+    var FILTER_ROUTES = {
+      all: [],
+      verified: ['obsidian', 'claude-code', 'dsh', 'astrbot'],
+      ext: ['agentmail'],
+      obsidian: ['obsidian'],
+      'claude-code': ['claude-code'],
+      dsh: ['dsh'],
+      astrbot: ['astrbot'],
+      agentmail: ['agentmail']
+    }
+
+    var activeFilter = 'all'
+    var pinnedRoutes = null
+    var hoverRoutes = null
+
+    function routesOf(el) {
+      var raw = el.getAttribute('data-route') || ''
       return raw.split(/\s+/).filter(Boolean)
     }
 
-    function clearFocus() {
-      svg.classList.remove('focusing')
-      nodes.concat(edges).forEach(function (el) { el.classList.remove('lit') })
-      labels.forEach(function (el) { el.classList.remove('lit') })
-    }
-
-    function focusRoutes(routes) {
-      if (!routes.length) return clearFocus()
+    function renderSpotlight() {
+      var routes = hoverRoutes || pinnedRoutes || FILTER_ROUTES[activeFilter] || []
+      if (!routes.length) {
+        svg.classList.remove('focusing')
+        nodes.concat(edges).concat(labels).forEach(function (el) { el.classList.remove('lit') })
+        return
+      }
       svg.classList.add('focusing')
-      nodes.concat(edges).forEach(function (el) {
-        var hit = routesOf(el).some(function (route) { return routes.indexOf(route) !== -1 })
-        el.classList.toggle('lit', hit)
-      })
-      labels.forEach(function (el) {
-        var hit = routesOf(el).some(function (route) { return routes.indexOf(route) !== -1 })
+      nodes.concat(edges).concat(labels).forEach(function (el) {
+        var hit = routesOf(el).some(function (r) { return routes.indexOf(r) !== -1 })
         el.classList.toggle('lit', hit)
       })
     }
 
-    function bindFocusTrigger(el) {
-      var routes = routesOf(el)
-      if (!routes.length) return
-      el.addEventListener('pointerenter', function () { focusRoutes(routes) })
-      el.addEventListener('pointerleave', clearFocus)
-      el.addEventListener('focus', function () { focusRoutes(routes) })
-      el.addEventListener('blur', clearFocus)
+    function setFilter(name) {
+      activeFilter = FILTER_ROUTES[name] ? name : 'all'
+      pinnedRoutes = null
+      filterBtns.forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-filter') === activeFilter))
+      })
+      renderSpotlight()
     }
 
-    nodes.forEach(bindFocusTrigger)
-    /* Hovering an edge alone also explains that edge, when it has one route. */
-    edges.forEach(function (edge) {
-      var routes = routesOf(edge)
-      if (!routes.length) return
-      edge.addEventListener('pointerenter', function () { focusRoutes(routes) })
-      edge.addEventListener('pointerleave', clearFocus)
+    filterBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = btn.getAttribute('data-filter')
+        setFilter(activeFilter === target && target !== 'all' ? 'all' : target)
+      })
     })
 
-    resetBtn.addEventListener('click', clearFocus)
-
-    /* Nothing to animate when motion is reduced: drop the hover highlight
-       entirely rather than flashing it without a transition. */
-    if (reduceMotion.matches) {
-      nodes.forEach(function (el) {
-        el.addEventListener('pointerenter', function () { el.style.strokeWidth = '2' })
-        el.addEventListener('pointerleave', function () { el.style.strokeWidth = '' })
+    nodes.forEach(function (node) {
+      var routes = routesOf(node)
+      if (!routes.length) return
+      node.addEventListener('pointerenter', function () {
+        hoverRoutes = routes
+        renderSpotlight()
       })
+      node.addEventListener('pointerleave', function () {
+        hoverRoutes = null
+        renderSpotlight()
+      })
+      node.addEventListener('focus', function () {
+        hoverRoutes = routes
+        renderSpotlight()
+      })
+      node.addEventListener('blur', function () {
+        hoverRoutes = null
+        renderSpotlight()
+      })
+      node.addEventListener('click', function (e) {
+        if (wasDragged) return
+        e.stopPropagation()
+        var same = pinnedRoutes && pinnedRoutes.join(' ') === routes.join(' ')
+        pinnedRoutes = same ? null : routes
+        renderSpotlight()
+      })
+    })
+
+    edgeHits.forEach(function (hit) {
+      var routes = routesOf(hit)
+      if (!routes.length) return
+      hit.addEventListener('pointerenter', function () {
+        hoverRoutes = routes
+        renderSpotlight()
+      })
+      hit.addEventListener('pointerleave', function () {
+        hoverRoutes = null
+        renderSpotlight()
+      })
+    })
+
+    /* ---- Wheel Zoom (0.75x–2.6x) + Pointer Drag-to-Pan ---- */
+    var BASE_W = 1080
+    var BASE_H = 730
+    var MIN_ZOOM = 0.75
+    var MAX_ZOOM = 2.6
+    var cam = { scale: 1, cx: BASE_W / 2, cy: BASE_H / 2 }
+    var dragState = null
+    var wasDragged = false
+
+    function clamp(val, min, max) {
+      return Math.max(min, Math.min(max, val))
     }
+
+    function updateCamera() {
+      var vw = BASE_W / cam.scale
+      var vh = BASE_H / cam.scale
+      cam.cx = clamp(cam.cx, 0, BASE_W)
+      cam.cy = clamp(cam.cy, 0, BASE_H)
+      var vx = cam.cx - vw / 2
+      var vy = cam.cy - vh / 2
+      svg.setAttribute('viewBox', vx.toFixed(2) + ' ' + vy.toFixed(2) + ' ' + vw.toFixed(2) + ' ' + vh.toFixed(2))
+      zoomReadout.textContent = Math.round(cam.scale * 100) + '%'
+    }
+
+    function clientToSvg(clientX, clientY) {
+      var ctm = svg.getScreenCTM()
+      if (!ctm) return { x: cam.cx, y: cam.cy }
+      var pt = svg.createSVGPoint()
+      pt.x = clientX
+      pt.y = clientY
+      return pt.matrixTransform(ctm.inverse())
+    }
+
+    function zoomAt(factor, clientX, clientY) {
+      var nextScale = clamp(cam.scale * factor, MIN_ZOOM, MAX_ZOOM)
+      if (Math.abs(nextScale - cam.scale) < 0.001) return
+      if (typeof clientX === 'number' && typeof clientY === 'number') {
+        var anchor = clientToSvg(clientX, clientY)
+        var ratio = cam.scale / nextScale
+        cam.cx = anchor.x - (anchor.x - cam.cx) * ratio
+        cam.cy = anchor.y - (anchor.y - cam.cy) * ratio
+      }
+      cam.scale = nextScale
+      updateCamera()
+    }
+
+    stage.addEventListener('wheel', function (e) {
+      e.preventDefault()
+      var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+      zoomAt(factor, e.clientX, e.clientY)
+    }, { passive: false })
+
+    stage.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return
+      var ctm = svg.getScreenCTM()
+      dragState = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startCx: cam.cx,
+        startCy: cam.cy,
+        unitPerPxX: ctm ? 1 / ctm.a : 1,
+        unitPerPxY: ctm ? 1 / ctm.d : 1,
+        moved: false
+      }
+      wasDragged = false
+    })
+
+    stage.addEventListener('pointermove', function (e) {
+      if (!dragState || e.pointerId !== dragState.pointerId) return
+      var dx = e.clientX - dragState.startX
+      var dy = e.clientY - dragState.startY
+      if (!dragState.moved && Math.hypot(dx, dy) > 3) {
+        dragState.moved = true
+        wasDragged = true
+        stage.classList.add('is-dragging')
+        try { stage.setPointerCapture(e.pointerId) } catch (_) {}
+      }
+      if (dragState.moved) {
+        cam.cx = dragState.startCx - dx * dragState.unitPerPxX
+        cam.cy = dragState.startCy - dy * dragState.unitPerPxY
+        updateCamera()
+      }
+    })
+
+    function endDrag(e) {
+      if (!dragState || (e && e.pointerId !== dragState.pointerId)) return
+      if (dragState.moved) {
+        try { stage.releasePointerCapture(dragState.pointerId) } catch (_) {}
+      }
+      stage.classList.remove('is-dragging')
+      dragState = null
+      setTimeout(function () { wasDragged = false }, 0)
+    }
+
+    stage.addEventListener('pointerup', endDrag)
+    stage.addEventListener('pointercancel', endDrag)
+    stage.addEventListener('click', function () {
+      if (!wasDragged && pinnedRoutes) {
+        pinnedRoutes = null
+        renderSpotlight()
+      }
+    })
+
+    zoomInBtn.addEventListener('click', function () { zoomAt(1.2) })
+    zoomOutBtn.addEventListener('click', function () { zoomAt(1 / 1.2) })
+
+    resetBtn.addEventListener('click', function () {
+      cam.scale = 1
+      cam.cx = BASE_W / 2
+      cam.cy = BASE_H / 2
+      updateCamera()
+      setFilter('all')
+    })
   })()
 </script>
 </body>

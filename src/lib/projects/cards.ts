@@ -44,8 +44,19 @@ export type BuildProjectCardsOptions = {
   featuredOnly?: boolean
 }
 
+export type ProjectLinkKind = 'demo' | 'product' | 'diagram' | 'repo' | 'default'
+
 export function isExternalProjectLink(href: string): boolean {
   return /^https?:\/\//i.test(href)
+}
+
+export function projectLinkKind(link: ProjectLink): ProjectLinkKind {
+  const { href, label } = link
+  if (href.includes('/demo') || /演示|Demo/i.test(label)) return 'demo'
+  if (href.includes('/product') || /产品|概念/i.test(label)) return 'product'
+  if (href.includes('/diagrams/') || /图/.test(label)) return 'diagram'
+  if (isExternalProjectLink(href)) return 'repo'
+  return 'default'
 }
 
 export function buildProjectCards(

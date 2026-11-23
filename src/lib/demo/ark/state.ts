@@ -22,6 +22,8 @@ export type ArkScenarioId =
   | 'vault-write-and-undo'
   | 'memory-and-concurrency'
 
+export type ArkReviewPeriod = 'week' | 'month' | 'year'
+
 export type ArkPendingAction = {
   id: string
   channel: 'agentmail'
@@ -52,9 +54,54 @@ export type ArkCollectItem = {
 export type ArkTask = {
   id: string
   title: string
+  tags: string[]
   status: 'todo' | 'doing' | 'done'
+  due: string | null
   dueToday: boolean
+  completed?: string
+  desc?: string
+  parent?: string
+  progress?: string
   source: string
+}
+
+export type ArkTaskReview = {
+  id: string
+  period: ArkReviewPeriod
+  label: string
+  path: string
+  filterTag: string
+  filterQuery: string
+  completedCount: number
+  content: string
+  at: number
+}
+
+export type ArkTaskFilter = {
+  tag?: string
+  query?: string
+}
+
+export type ArkTaskFlowRow = {
+  tag: string
+  count: number
+  pct: number
+}
+
+export type ArkTaskFlow = {
+  mode: 'distribution' | 'cooccurrence'
+  pivotTag: string | null
+  totalDone: number
+  rows: ArkTaskFlowRow[]
+}
+
+export type ArkTaskYearSummary = {
+  totalTracked: number
+  yearDone: ArkTask[]
+  overdueCount: number
+  completionRate: number
+  byMonth: number[]
+  flow: ArkTaskFlow
 }
 
 export type ArkMemory = {
@@ -86,6 +133,8 @@ export type ArkSnapshot = {
   previousNoteContent?: string
   previousNoteRev?: string
   previousTasks?: ArkTask[]
+  previousTaskReviews?: ArkTaskReview[]
+  reviewPath?: string
   previousCollectItems?: ArkCollectItem[]
 }
 
@@ -114,6 +163,7 @@ export type ArkDemoState = {
   note: { path: string; content: string; rev: string }
   collectItems: ArkCollectItem[]
   tasks: ArkTask[]
+  taskReviews: ArkTaskReview[]
   memories: ArkMemory[]
   thread: ArkThread
   snapshots: ArkSnapshot[]
@@ -133,7 +183,22 @@ export type ArkAction =
   | { type: 'collect-submit'; url: string; host: ArkHostId }
   | { type: 'collect-finish'; id: string }
   | { type: 'collect-retry'; id: string }
+  | {
+      type: 'create-task'
+      title: string
+      tags?: string[]
+      dueToday?: boolean
+      due?: string | null
+      desc?: string
+    }
   | { type: 'move-task'; id: string; status: ArkTask['status'] }
+  | {
+      type: 'generate-task-review'
+      period: ArkReviewPeriod
+      tag?: string
+      query?: string
+      month?: string
+    }
   | { type: 'run-channel-action'; host: ArkHostId; action: string }
   | { type: 'request-agentmail-send' }
   | { type: 'resolve-pending-action'; decision: 'approve' | 'reject' }
@@ -170,6 +235,8 @@ export const MEMORY_INFERRED_PREFIX: string = machine.MEMORY_INFERRED_PREFIX
 export const STALE_BASE_REV: string = machine.STALE_BASE_REV
 export const CURRENT_REV: string = machine.CURRENT_REV
 export const ARK_BUDGET: { resident: number; onDemand: number } = machine.ARK_BUDGET
+export const ARK_TASKS_NOW: string = machine.ARK_TASKS_NOW
+export const ARK_TASKS_WEEK_DATES = machine.ARK_TASKS_WEEK_DATES as string[]
 export const ARK_HOSTS = machine.ARK_HOSTS as ArkHostId[]
 export const ARK_WORKSPACE_TABS = machine.ARK_WORKSPACE_TABS as ArkWorkspaceTab[]
 export const ARK_SIDEBAR_TABS = machine.ARK_SIDEBAR_TABS as ArkSidebarTab[]
@@ -195,3 +262,22 @@ export const channelOf = machine.channelOf as (host: ArkHostId) => ArkChannel | 
 export const estimatedTokens = machine.estimatedTokens as (text: string) => number
 export const messageTime = machine.messageTime as (at: number) => string
 export const diffLines = machine.diffLines as (before: string, after: string) => string
+
+export const isTaskOverdue = machine.isTaskOverdue as (task: ArkTask, nowIso?: string) => boolean
+export const isTaskDueToday = machine.isTaskDueToday as (task: ArkTask, nowIso?: string) => boolean
+export const isSameTaskWeek = machine.isSameTaskWeek as (iso?: string | null) => boolean
+export const taskTagCounts = machine.taskTagCounts as (
+  tasks: ArkTask[]
+) => Array<{ tag: string; count: number }>
+export const taskMatchesFilter = machine.taskMatchesFilter as (
+  task: ArkTask,
+  filter?: ArkTaskFilter
+) => boolean
+export const taskCooccurrence = machine.taskCooccurrence as (
+  tasks: ArkTask[],
+  filter?: ArkTaskFilter
+) => ArkTaskFlow
+export const taskYearSummary = machine.taskYearSummary as (
+  tasks: ArkTask[],
+  filter?: ArkTaskFilter
+) => ArkTaskYearSummary

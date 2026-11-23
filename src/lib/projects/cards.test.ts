@@ -159,7 +159,8 @@ describe('repository project content contract', () => {
     for (const card of cards) {
       expect(card.highlights.length).toBeGreaterThanOrEqual(2)
       expect(card.highlights.length).toBeLessThanOrEqual(3)
-      expect(card.links.length).toBeGreaterThanOrEqual(1)
+      expect(card.links.length).toBeGreaterThanOrEqual(2)
+      expect(card.links.length).toBeLessThanOrEqual(3)
 
       for (const link of card.links) {
         expect(link.label.trim().length).toBeGreaterThan(0)
@@ -170,9 +171,9 @@ describe('repository project content contract', () => {
         if (isRootRelative) {
           if (link.href === '/projects/finance-review-agent/demo/') {
             expect(existsSync(resolve('apps/finance-demo/index.html'))).toBe(true)
-          } else if (link.href.endsWith('/demo/')) {
-            // Interactive demos are static directory indexes under `public/`,
-            // so they resolve to a page rather than to a content entry.
+          } else if (link.href.endsWith('/demo/') || link.href.endsWith('/product/')) {
+            // Interactive demos and product showcase pages are static directory
+            // indexes under `public/`, resolving to an `index.html` file.
             expect(existsSync(resolve('public', link.href.slice(1), 'index.html'))).toBe(true)
           } else if (link.href.startsWith('/projects/')) {
             const subSlug = link.href.slice('/projects/'.length)
@@ -314,7 +315,7 @@ describe('ark workbench v2 content contract', () => {
     expect((body.match(/^\d\. /gm) ?? []).length).toBeGreaterThanOrEqual(5)
   })
 
-  test('multi-host claims are graded: AstrBot and AgentMail never read as verified', () => {
+  test('multi-host claims are graded: AgentMail never reads as verified while AstrBot QQ is verified', () => {
     const content = read(`${ARK_DIR}/multi-host-and-context.md`)
 
     // Both grades are stated in the reader's language, not implied.
@@ -323,27 +324,27 @@ describe('ark workbench v2 content contract', () => {
     expect(content).toContain('标准 MCP 协议扩展接入')
 
     for (const line of content.split('\n')) {
-      if (/AstrBot|AgentMail/.test(line)) {
+      if (/AgentMail/.test(line)) {
         expect(line).not.toMatch(/验收通过|已验收|已完成实机|已支持/)
       }
     }
 
-    // The MCP-extension grade names both external channels and says outright
-    // that neither has had a real-machine acceptance run.
+    // The MCP-extension grade names AgentMail and says outright that it has not
+    // had a real-machine acceptance run.
     const graded = content.split(/\n(?=### )/).find((section) => section.startsWith('### 标准 MCP'))
     expect(graded).toBeDefined()
-    expect(graded).toMatch(/AstrBot/)
     expect(graded).toMatch(/AgentMail/)
-    expect(graded).toMatch(/未/)
+    expect(graded).toMatch(/未|没有/)
 
-    // The verified grade lists the hosts that really were accepted, with versions.
+    // The verified grade lists the hosts that really were accepted, including AstrBot QQ.
     const verified = content.split(/\n(?=### )/).find((section) =>
       section.startsWith('### 已完成实机')
     )
     expect(verified).toBeDefined()
     expect(verified).toMatch(/Claude Code 2\.1\.304/)
     expect(verified).toMatch(/DSH 0\.1\.0-rc\.7/)
-    expect(verified).not.toMatch(/AstrBot|AgentMail/)
+    expect(verified).toMatch(/AstrBot/)
+    expect(verified).not.toMatch(/AgentMail/)
   })
 
   test('the v1-to-v2 and memory pages keep their load-bearing rules and honest boundaries', () => {
@@ -427,6 +428,18 @@ describe('ark workbench v2 content contract', () => {
     // The overview body names the demo too, so a reader who scrolls finds it.
     expect(bodyOf(`${ARK_DIR}/index.md`)).toContain('/projects/ark-workbench/demo/')
   })
+
+  test('the about page stays synchronized with v2 metrics and links all three interactive demos', () => {
+    const aboutSource = read('src/pages/about/index.astro')
+    expect(aboutSource).not.toContain('3,778')
+    expect(aboutSource).not.toContain('五套独立账本')
+    expect(aboutSource).not.toContain('155 文件')
+    expect(aboutSource).not.toContain('563 条记录')
+    expect(aboutSource).toContain('658')
+    expect(aboutSource).toContain('/projects/ark-workbench/demo/')
+    expect(aboutSource).toContain('/projects/finance-review-agent/demo/')
+    expect(aboutSource).toContain('/projects/english-content-workbench/demo/')
+  })
 })
 
 describe('project card template and page hygiene', () => {
@@ -484,7 +497,7 @@ describe('english workbench interactive demo entry', () => {
 
   test('the overview links the demo, and the link resolves to a shipped page', () => {
     const source = readFileSync(resolve('src/content/projects/english-content-workbench/index.md'), 'utf8')
-    expect(source).toContain('label: 交互演示')
+    expect(source).toMatch(/label: .*演示/)
     expect(source).toContain('href: /projects/english-content-workbench/demo/')
 
     // A trailing slash is right here: this is a static directory index under
@@ -505,7 +518,7 @@ describe('english workbench interactive demo entry', () => {
     const card = cards.find((item) => item.slug === 'english-content-workbench')
     expect(card).toBeDefined()
 
-    const demo = card!.links.find((link) => link.label === '交互演示')
+    const demo = card!.links.find((link) => /演示/.test(link.label))
     expect(demo).toBeDefined()
     expect(demo!.href).toBe('/projects/english-content-workbench/demo/')
     // Root-relative, so the card opens it in place instead of a new tab.

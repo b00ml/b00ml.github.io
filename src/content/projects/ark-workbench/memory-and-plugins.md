@@ -49,20 +49,53 @@ Ark 的解法是把「谁说的」变成数据字段，而不是靠措辞猜。
 
 把上面这些合起来，其实是一道道闸门：
 
-```
-用户说过的话 ──► excerpt（只在内存里过一遍，不落盘）
-                    │
-                    ▼
-              一次 LLM 抽取 ──► inferred（前缀 [推测，未确认]，不进常驻层）
-                    │
-        ┌───────────┴────────────┐
-        ▼                        ▼
-   用户确认（confirm）        用户驳回/修改/降级
-        │                        │
-    confirmed + via          feedback.jsonl 追加一行
-        │                        │
-   进 2k 常驻层              仓库里的记忆面板可按 via 批量降级
-```
+<figure class="fig" data-anim>
+<svg viewBox="0 0 720 442" role="img" aria-label="防污染闸门链路：用户原话经内存 excerpt 抽取为带前缀的 inferred，经 confirm 升格为 confirmed 进入常驻层，或驳回降级记入 feedback.jsonl">
+<defs>
+<marker id="ah-mem1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--primary))"/></marker>
+<marker id="ah-mem1-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--foreground))"/></marker>
+<marker id="ah-mem1-dim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1L9 5L0 9z" style="fill:hsl(var(--muted-foreground))"/></marker>
+</defs>
+<g class="rise" style="--at:0s">
+<rect class="s-node" x="24" y="16" width="212" height="66" rx="10"/>
+<text class="t-ink" x="130" y="44" text-anchor="middle">用户原话</text>
+<text class="t-dim" x="130" y="69" text-anchor="middle">跨话题线索输入</text>
+<path class="s-acc draw" pathLength="1" style="--at:.2s" d="M236 49H276" marker-end="url(#ah-mem1)"/>
+<rect class="s-node" x="280" y="16" width="416" height="66" rx="10"/>
+<text class="t-ink" x="488" y="44" text-anchor="middle">excerpt · 仅内存流转</text>
+<text class="t-dim" x="488" y="69" text-anchor="middle">单次供抽取使用，绝不落盘</text>
+</g>
+<g class="rise" style="--at:.4s">
+<path class="s-acc draw" pathLength="1" style="--at:.4s" d="M488 82V100H360V114" marker-end="url(#ah-mem1)"/>
+<text class="t-dim" x="504" y="105" text-anchor="start">一次 LLM 抽取</text>
+<rect class="s-node-acc" x="110" y="118" width="500" height="92" rx="10"/>
+<text class="t-acc" x="360" y="146" text-anchor="middle">inferred · 推断隔离闸门</text>
+<text class="t-ink" x="360" y="172" text-anchor="middle">强制前缀 [推测，未确认]</text>
+<text class="t-dim" x="360" y="198" text-anchor="middle">仅按需召回可见 · 永不进常驻层</text>
+</g>
+<g class="rise" style="--at:.75s">
+<path class="s-acc draw" pathLength="1" style="--at:.75s" d="M300 210V232H180V254" marker-end="url(#ah-mem1)"/>
+<path class="s-dim" d="M420 210V232H540V254" marker-end="url(#ah-mem1-dim)"/>
+<rect class="s-node-acc" x="36" y="258" width="288" height="70" rx="10"/>
+<text class="t-acc" x="180" y="286" text-anchor="middle">用户确认（confirm）</text>
+<text class="t-dim" x="180" y="312" text-anchor="middle">confirmed · 记录 via</text>
+<rect class="s-node" x="396" y="258" width="288" height="70" rx="10"/>
+<text class="t-ink" x="540" y="286" text-anchor="middle">驳回 / 修改 / 降级</text>
+<text class="t-dim" x="540" y="312" text-anchor="middle">追加 feedback.jsonl</text>
+</g>
+<g class="rise" style="--at:1.05s">
+<path class="s-acc draw" pathLength="1" style="--at:1.05s" d="M180 328V354" marker-end="url(#ah-mem1)"/>
+<path class="s-ink draw" pathLength="1" style="--at:1.05s" d="M540 328V354" marker-end="url(#ah-mem1-ink)"/>
+<rect class="s-node-acc" x="36" y="358" width="288" height="70" rx="10"/>
+<text class="t-acc" x="180" y="386" text-anchor="middle">进入 2k 常驻层</text>
+<text class="t-dim" x="180" y="412" text-anchor="middle">会话 resume 自动装配</text>
+<rect class="s-node" x="396" y="358" width="288" height="70" rx="10"/>
+<text class="t-ink" x="540" y="386" text-anchor="middle">按 via 通道追查回退</text>
+<text class="t-dim" x="540" y="412" text-anchor="middle">记忆面板可一键批量降级</text>
+</g>
+</svg>
+<figcaption><span><b>图 1</b>四道防污染闸门：`excerpt` 只过内存、抽取一律落为带 `[推测，未确认]` 前缀的 `inferred`、升格必走 `confirm` 留痕 `via`、误确认可按通道批量降回推断。</span><button class="replay" type="button">重播</button></figcaption>
+</figure>
 
 设计文档里写的是「这是防止跨会话记忆污染的主要机制」，然后紧跟一句：**效果用指标衡量，不宣称「消除」污染。** 推断被驳回的比例只记录趋势，不设目标——设了目标就会有人为了达成目标去少写推断。
 

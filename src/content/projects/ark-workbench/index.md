@@ -8,13 +8,15 @@ role: 独立开发
 period: 2026 至今
 order: 2
 highlights:
-  - 658 项自动化测试 · Claude Code 与 DSH 双宿主实机验收通过
+  - 658 项自动化测试 · Obsidian / Claude Code / DSH / 手机 QQ 多端实机验收通过
   - 2k 常驻 + 4k 按需双层上下文预算 · 单进程 ark serve 统一 /mcp 与 /v1
   - Trace 轨迹 + 二元 Rubric 用例双闭环 · 一次操作一个可撤销 Git 快照
 stack: [MCP, Obsidian 插件, TypeScript, Python, 检索, LLM]
 links:
   - label: 交互演示
     href: /projects/ark-workbench/demo/
+  - label: 产品概念页
+    href: /projects/ark-workbench/product/
   - label: 全渠道架构图
     href: /diagrams/ark-architecture.html
 ---
@@ -53,6 +55,7 @@ links:
 | 常驻层上下文 | **2k token** | 已确认偏好 + 当前话题的 Live State + 已启用插件的 `context.md`，会话开始时装配 |
 | 按需层上下文 | **4k token** | 记忆与笔记检索共用，各占一半预算，用不满的让给另一边 |
 | 双宿主验收 | **Claude Code 2.1.304 + DSH 0.1.0-rc.7** | 2026-11-01 实机四步通过：提问、引用、写笔记、撤销 |
+| 手机 QQ 渠道 | **AstrBot 实机验收通过** | 经 `streamable_http` 连接 `/mcp`，私聊共享 Collect 采集与 Tasks 任务查询/创建/拆分闭环通过 |
 | Obsidian 面板 | **8 步人工验收** | 2026-11-16：整理当前笔记、一轮对话只产生一个快照、确认/驳回推断、外部动作确认卡片拒绝后不执行 |
 | 评测闭环 | **Trace + 二元 Rubric** | 每轮一条轨迹，可升格成回归用例；门禁脚本统一跑，缺模型配置时显式标 `skipped` |
 
@@ -72,11 +75,11 @@ links:
 
 ## 先动手，再读字
 
-[交互演示](/projects/ark-workbench/demo/)在浏览器里还原了同一套双区工作台：左/中是笔记真源、Collect 采集库、Tasks 看板与多端渠道模拟台，右侧是常驻的对话、历史、记忆与设置边栏。顶部三个预设剧本可以把「免审批写入 + 一键回滚」「跨端采集到外发拦截」「记忆确认与并发保护」各走一遍，用的规则和仓库里被测的状态机是同一份。
+[交互演示](/projects/ark-workbench/demo/)在浏览器里还原了完整的双区工作台（含 V7 多标签任务洞察与周/月/年回顾），顶部三个预设剧本可以把「免审批写入 + 一键回滚」「跨端采集到外发拦截」「记忆确认与并发保护」各走一遍；如果想按产品导览节奏快速浏览核心场景与接入方式，也可以打开独立的[产品概念页](/projects/ark-workbench/product/)对比查看。
 
 <iframe src="/diagrams/ark-architecture.html" title="Ark v2 全渠道交互架构图" loading="lazy" style="width:100%;height:720px;border:1px solid #8884;border-radius:8px;"></iframe>
 
-_图：全渠道拓扑（交互版）。五个渠道共用同一台 `ark serve`，绿色实线是已完成实机/自动验收的链路，虚线是标准 MCP 协议扩展接入、尚未实机验收的链路；鼠标悬停任一渠道可聚焦它自己的通路，右上角切换深浅主题。[在新窗口打开](/diagrams/ark-architecture.html)可放大细看。_
+_图：全渠道拓扑（交互版）。五个渠道共用同一台 `ark serve`，绿色实线（Obsidian、Claude Code、DSH、手机 QQ 经 AstrBot）是已完成实机/自动验收的链路，虚线（邮件经腾讯 AgentMail MCP）是标准 MCP 协议扩展接入、尚未实机验收的链路；鼠标悬停任一渠道可聚焦通路，支持滚轮缩放与深浅主题切换。[在新窗口打开](/diagrams/ark-architecture.html)可放大细看。_
 
 ## 四篇工程深读
 

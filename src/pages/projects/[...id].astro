@@ -1,6 +1,6 @@
 ---
 import { getCollection, render, type CollectionEntry } from 'astro:content'
-import { isExternalProjectLink } from '@/lib/projects/cards'
+import { isExternalProjectLink, projectLinkKind } from '@/lib/projects/cards'
 import { isProjectRoot, projectPath, projectRootId } from '@/lib/projects/entries'
 import { STATUS_LABELS, type ProjectStatus } from '@/lib/projects/status'
 import { detailAvailable } from '@/lib/seo/drafts'
@@ -156,17 +156,22 @@ const siblings = isRoot
           )}
 
           {links.length > 0 && (
-            <div class='mt-4 flex flex-wrap gap-3'>
+            <div class='mt-4 flex flex-wrap gap-2.5'>
               {links.map((link: { label: string; href: string }) => {
                 const external = isExternalProjectLink(link.href)
+                const kind = projectLinkKind(link)
                 return (
                   <a
                     href={link.href}
                     target={external ? '_blank' : undefined}
                     rel={external ? 'noopener noreferrer' : undefined}
-                    class='rounded-md border border-border px-3 py-1.5 text-sm transition hover:border-foreground/20 hover:bg-muted'
+                    class:list={[
+                      'detail-action inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition',
+                      `detail-action--${kind}`
+                    ]}
                   >
-                    {link.label} {external ? '↗' : '→'}
+                    <span>{link.label}</span>
+                    <span aria-hidden='true'>{external ? '↗' : '→'}</span>
                   </a>
                 )
               })}
@@ -235,3 +240,79 @@ const siblings = isRoot
     }
   </div>
 </PageLayout>
+
+<style>
+  .detail-action--demo {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.08);
+  }
+  .detail-action--demo:hover {
+    background-color: hsl(var(--primary) / 0.88);
+    color: hsl(var(--primary-foreground));
+  }
+
+  .detail-action--product {
+    background-color: hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--primary));
+  }
+  .detail-action--product:hover {
+    background-color: hsl(var(--primary) / 0.18);
+    border-color: hsl(var(--primary) / 0.55);
+    color: hsl(var(--primary));
+  }
+
+  .detail-action--diagram {
+    background-color: hsl(38 88% 46% / 0.1);
+    border-color: hsl(36 80% 42% / 0.34);
+    color: hsl(34 86% 29%);
+  }
+  .detail-action--diagram:hover {
+    background-color: hsl(38 88% 46% / 0.18);
+    border-color: hsl(36 80% 42% / 0.55);
+    color: hsl(34 90% 24%);
+  }
+  :global(.dark) .detail-action--diagram {
+    background-color: hsl(40 92% 64% / 0.12);
+    border-color: hsl(40 92% 64% / 0.35);
+    color: hsl(42 94% 76%);
+  }
+  :global(.dark) .detail-action--diagram:hover {
+    background-color: hsl(40 92% 64% / 0.2);
+    border-color: hsl(40 92% 64% / 0.55);
+    color: hsl(42 96% 84%);
+  }
+
+  .detail-action--repo {
+    background-color: hsl(156 54% 36% / 0.09);
+    border-color: hsl(156 50% 34% / 0.32);
+    color: hsl(158 60% 25%);
+  }
+  .detail-action--repo:hover {
+    background-color: hsl(156 54% 36% / 0.17);
+    border-color: hsl(156 50% 34% / 0.52);
+    color: hsl(158 64% 20%);
+  }
+  :global(.dark) .detail-action--repo {
+    background-color: hsl(152 62% 62% / 0.12);
+    border-color: hsl(152 62% 62% / 0.34);
+    color: hsl(152 68% 76%);
+  }
+  :global(.dark) .detail-action--repo:hover {
+    background-color: hsl(152 62% 62% / 0.2);
+    border-color: hsl(152 62% 62% / 0.54);
+    color: hsl(152 74% 84%);
+  }
+
+  .detail-action--default {
+    background-color: hsl(var(--background));
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .detail-action--default:hover {
+    background-color: hsl(var(--muted));
+    border-color: hsl(var(--foreground) / 0.2);
+  }
+</style>
