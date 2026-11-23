@@ -4,7 +4,7 @@ description: '从「演示能跑」到「线上敢用」隔着的八件工程硬
 pubDate: 2026-10-18
 tags: ['agent', 'ai-engineering', 'system-design']
 featured: true
-featuredOrder: 1
+featuredOrder: 3
 ---
 
 > 今天，任何一个人都能在五分钟里写一个「能跑」的 Agent：调 API、给工具、加个循环。但从「演示能跑」到「线上敢用」，中间隔着的不是更炫的 Prompt，而是八件工程上的硬功夫。
