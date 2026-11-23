@@ -22,6 +22,10 @@ summary: 检索与引用
 
 一个 leaf 可以由不连续的源段拼成：页 2 的定义加页 3 的例句，中间的页眉被排除，于是它带两个 source_segments，分别记「源区间 → leaf 区间」和各自的 page、block；顶层 content_start 为空，source_envelope 只作导航。parent 是组织和回传单元，不参与 embedding。
 
+![PDF 解析与结构切分界面：文档结构、章节关系、页面信息与切出的知识片段。](../../../assets/english-content-workbench/pdf-structure.webp)
+
+_图 1：切分走结构不是走滑窗。跨页内容按章节与关系组织，页只是软边界，每块都能回到它那一页、那一段。点击图片可以放大。_
+
 ## 索引：校验完再原子切换
 
 建索引的顺序是：解析、切块、校验计划，冻结结构快照，分批嵌入，检查返回数量、维度和数值有限，然后同一批写文档和块。batch_size 取应用上限和 provider 上限里较小的那个。
@@ -43,5 +47,9 @@ summary: 检索与引用
 provenance 把实际交付的 segment 转成内容引用；候选 summary 里的 diagnostic_candidate 标记只供定位，不计入「已给模型的证据」。三种内置题型都把检索设成 required：取不到有效片段，就在调用生成模型之前失败。无来源的负例跑过，生成调用数为 0。
 
 三份资料全部走 structure，建成 81 个 leaf 向量、1 个 parent；44 条来源回归在 Top 5 和 Top 8 上都是 44/44 齐备。有一次融合只返出 4 条，该进前三的段没在里面，扩大返回预算后补齐。这套链路保证的是「这段原文被送到、能点回那一页」，答案对不对交给后面两层判。
+
+![检索测试界面：输入问题后实际召回的知识片段、来源页码与上下文组合结果。](../../../assets/english-content-workbench/retrieval-test.webp)
+
+_图 2：检索测试看的不只是命中某一页，而是返回的 source_segments 齐不齐、跨页与跨结构关系有没有恢复；不齐时读 incomplete_reasons。点击图片可以放大。_
 
 另两段：[规则、模型、人三层怎么分工](/projects/english-content-workbench/quality-loop)；[一次生成要跨五个地方保持一致](/projects/english-content-workbench/reliability)。
