@@ -170,6 +170,10 @@ describe('repository project content contract', () => {
         if (isRootRelative) {
           if (link.href === '/projects/finance-review-agent/demo/') {
             expect(existsSync(resolve('apps/finance-demo/index.html'))).toBe(true)
+          } else if (link.href.endsWith('/demo/')) {
+            // Interactive demos are static directory indexes under `public/`,
+            // so they resolve to a page rather than to a content entry.
+            expect(existsSync(resolve('public', link.href.slice(1), 'index.html'))).toBe(true)
           } else if (link.href.startsWith('/projects/')) {
             const subSlug = link.href.slice('/projects/'.length)
             expect(findEntryFile('projects', subSlug)).toBeDefined()
@@ -448,5 +452,38 @@ describe('project card template and page hygiene', () => {
 
     // Detail page handles root-relative links via isExternalProjectLink
     expect(detailSource).toContain('isExternalProjectLink')
+  })
+})
+
+describe('english workbench interactive demo entry', () => {
+  const DEMO_DIR = 'public/projects/english-content-workbench/demo'
+
+  test('the overview links the demo, and the link resolves to a shipped page', () => {
+    const source = readFileSync(resolve('src/content/projects/english-content-workbench/index.md'), 'utf8')
+    expect(source).toContain('label: 交互演示')
+    expect(source).toContain('href: /projects/english-content-workbench/demo/')
+
+    // A trailing slash is right here: this is a static directory index under
+    // `public/`, not an Astro route (the site renders routes without one).
+    const page = resolve(`${DEMO_DIR}/index.html`)
+    const runtime = resolve(`${DEMO_DIR}/demo.js`)
+    expect(existsSync(page)).toBe(true)
+    expect(existsSync(runtime)).toBe(true)
+    expect(readFileSync(page, 'utf8')).toContain('src="./demo.js"')
+  })
+
+  test('the project card exposes it as an internal, root-relative target', () => {
+    const cards = buildProjectCards(loadProjectCollection(CONTENT_DIRS.projects), { isProd: true })
+    const card = cards.find((item) => item.slug === 'english-content-workbench')
+    expect(card).toBeDefined()
+
+    const demo = card!.links.find((link) => link.label === '交互演示')
+    expect(demo).toBeDefined()
+    expect(demo!.href).toBe('/projects/english-content-workbench/demo/')
+    // Root-relative, so the card opens it in place instead of a new tab.
+    expect(isExternalProjectLink(demo!.href)).toBe(false)
+
+    const diagram = card!.links.find((link) => link.label === '七阶段流水线图')
+    expect(diagram?.href).toBe('/diagrams/english-pipeline.html')
   })
 })

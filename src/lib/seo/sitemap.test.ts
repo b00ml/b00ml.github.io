@@ -49,7 +49,12 @@ describe('sitemap lastmod', () => {
       '/product/tags',
       '/product/tags/产品',
       '/product/tags/%E4%BA%A7%E5%93%81',
-      '/search'
+      '/search',
+      // Static directories under `public/`: the finance Vue sub-app and the two
+      // zero-backend interactive demos. Nothing to date them from.
+      '/projects/finance-review-agent/demo',
+      '/projects/ark-workbench/demo',
+      '/projects/english-content-workbench/demo'
     ]
     for (const pathname of undated) expect(sitemapLastModified(pathname)).toBeUndefined()
   })
