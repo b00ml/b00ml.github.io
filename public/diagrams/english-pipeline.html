@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英语内容生产工作台 · 七阶段流水线与恢复边界</title>
+<meta name="description" content="英语内容生产工作台的七阶段生产主链，以及事务 Outbox + 条件租约构成的恢复边界（可交互，支持深浅主题）。">
+<script>
+  // Resolve the theme before first paint so a light-preference reader does not
+  // get a dark flash. The toolbar script re-applies the same value afterwards.
+  (function () {
+    var root = document.documentElement
+    var theme = null
+    try { theme = localStorage.getItem('english-pipeline-theme') } catch (_) {}
+    if (theme !== 'light' && theme !== 'dark') {
+      theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    }
+    root.setAttribute('data-theme', theme)
+  })()
+</script>
+<style>
+  :root {
+    --bg: hsl(210 33% 99%);
+    --fg: hsl(240 10% 3.9%);
+    --muted: hsl(240 3.8% 28.1%);
+    --card: hsl(0 0% 100%);
+    --border: hsl(240 5.9% 88%);
+    --primary: hsl(200 29% 45%);
+    --edge: hsl(240 5.9% 62%);
+    --machine-fill: hsl(200 29% 45% / 0.08);
+    --human-fill: hsl(38 85% 45% / 0.12);
+    --evidence-fill: hsl(160 45% 35% / 0.1);
+    --zone-fill: hsl(240 4.8% 95.9% / 0.5);
+    --zone-line: hsl(200 29% 45% / 0.35);
+    color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    --bg: hsl(240 20.54% 5.2%);
+    --fg: hsl(0 0% 98%);
+    --muted: hsl(240 5% 74.9%);
+    --card: hsl(240 10% 3.9%);
+    --border: hsl(240 3.7% 19.9%);
+    --primary: hsl(195 95% 85%);
+    --edge: hsl(240 5% 52%);
+    --machine-fill: hsl(195 95% 85% / 0.09);
+    --human-fill: hsl(38 92% 70% / 0.11);
+    --evidence-fill: hsl(160 60% 70% / 0.1);
+    --zone-fill: hsl(240 5.9% 12% / 0.55);
+    --zone-line: hsl(195 95% 85% / 0.28);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px 24px 40px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: Satoshi, system-ui, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+      'Source Han Sans SC', 'Noto Sans CJK SC', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  /* Icon-only control: two icons stacked in one box and cross-faded, per the
+     site's blurred-icon-transition recipe. */
+  .theme-toggle {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    padding: 6px;
+    box-sizing: content-box;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  .theme-toggle svg {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 16px;
+    height: 16px;
+    transition: opacity 0.25s ease, filter 0.25s ease, transform 0.25s ease;
+  }
+
+  .theme-toggle .icon-sun { opacity: 0; filter: blur(4px); transform: scale(0.6); }
+  .theme-toggle .icon-moon { opacity: 1; filter: blur(0); transform: scale(1); }
+  html[data-theme='light'] .theme-toggle .icon-sun { opacity: 1; filter: blur(0); transform: scale(1); }
+  html[data-theme='light'] .theme-toggle .icon-moon { opacity: 0; filter: blur(4px); transform: scale(0.6); }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .swatch {
+    width: 11px;
+    height: 11px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+
+  .swatch.machine { background: var(--machine-fill); border-color: hsl(200 29% 45% / 0.6); }
+  .swatch.human { background: var(--human-fill); border-color: hsl(38 85% 45% / 0.6); }
+  .swatch.evidence { background: var(--evidence-fill); border-color: hsl(160 45% 35% / 0.6); }
+  .swatch.zone { background: var(--zone-fill); border-color: var(--zone-line); border-style: dashed; }
+
+  .canvas {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    padding: 8px;
+    overflow: auto;
+  }
+
+  svg { display: block; width: 100%; height: auto; }
+
+  /* Nodes */
+  .node rect.body {
+    fill: var(--machine-fill);
+    stroke: var(--border);
+    stroke-width: 1.2;
+  }
+
+  .node[data-kind='human'] rect.body {
+    fill: var(--human-fill);
+    stroke: hsl(38 85% 45% / 0.45);
+  }
+
+  .node[data-kind='evidence'] rect.body {
+    fill: var(--evidence-fill);
+    stroke: hsl(160 45% 35% / 0.4);
+  }
+
+  .node .title {
+    fill: var(--fg);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .node .sub {
+    fill: var(--muted);
+    font-size: 10.5px;
+  }
+
+  .node .badge-ring {
+    fill: var(--card);
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+
+  .node .badge-text {
+    fill: var(--primary);
+    font-size: 10px;
+    font-weight: 600;
+    text-anchor: middle;
+  }
+
+  /* Edges */
+  .edge-line {
+    fill: none;
+    stroke: var(--edge);
+    stroke-width: 1.6;
+    marker-end: url(#arrow);
+  }
+
+  .edge-line.dashed {
+    stroke-dasharray: 5 4;
+    marker-end: url(#arrow-dashed);
+  }
+
+  .edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 16;
+  }
+
+  #arrow path { fill: var(--edge); }
+  #arrow-dashed path { fill: var(--edge); }
+
+  .edge-label {
+    fill: var(--muted);
+    font-size: 10.5px;
+    text-anchor: middle;
+  }
+
+  .note {
+    fill: var(--muted);
+    font-size: 10.5px;
+  }
+
+  .zone rect {
+    fill: var(--zone-fill);
+    stroke: var(--zone-line);
+    stroke-width: 1.2;
+    stroke-dasharray: 6 5;
+  }
+
+  .zone-label {
+    fill: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .group-label {
+    fill: var(--muted);
+    font-size: 10.5px;
+    text-anchor: middle;
+    letter-spacing: 0.04em;
+  }
+
+  .group-brace {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 1.2;
+  }
+
+  .hint {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* Focus: hovering or tabbing to a node dims everything not adjacent to it, so
+     one step of the chain (or the recovery band) can be read on its own. */
+  .node,
+  .edge {
+    transition: opacity 0.18s ease;
+  }
+
+  svg.is-focused .node:not(.is-related) { opacity: 0.16; }
+  svg.is-focused .edge:not(.is-related) { opacity: 0.12; }
+  svg.is-focused .zone:not(.is-related) { opacity: 0.35; }
+  svg.is-focused .edge.is-related .edge-line { stroke: var(--primary); }
+  svg.is-focused .node.is-related rect.body { stroke: var(--primary); stroke-width: 1.6; }
+
+  @media (prefers-reduced-motion: reduce) {
+    body,
+    .theme-toggle,
+    .theme-toggle svg,
+    .node,
+    .edge {
+      transition: none;
+    }
+
+    .theme-toggle .icon-sun,
+    .theme-toggle .icon-moon {
+      filter: none;
+      transform: none;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="page" id="english-pipeline">
+  <div class="page-head">
+    <div>
+      <h1>英语内容生产工作台 · 七阶段流水线与恢复边界</h1>
+      <p class="lede">
+        主链上一份教材变成一批带引用的题：规则先拒掉能确定的错，模型判语感与解析，人守最后一眼，通过的才沉淀成样本。
+        下面那条虚线带是它的恢复边界——请求先落进事务 Outbox，靠条件租约决定谁有权确认，再由周期对账把缺口捞回来。
+      </p>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换到浅色主题">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+      </svg>
+    </button>
+  </div>
+
+  <ul class="legend">
+    <li><span class="swatch machine"></span>机器自动判定</li>
+    <li><span class="swatch human"></span>人工终审</li>
+    <li><span class="swatch evidence"></span>证据与回流</li>
+    <li><span class="swatch zone"></span>恢复边界（Outbox / 租约 / 对账）</li>
+  </ul>
+
+  <div class="canvas">
+    <svg id="english-pipeline-svg" viewBox="0 0 1180 640" role="img" lang="zh-CN"
+      aria-labelledby="english-pipeline-title english-pipeline-desc">
+      <title id="english-pipeline-title">英语内容生产工作台七阶段流水线与 Outbox 恢复边界</title>
+      <desc id="english-pipeline-desc">
+        三带结构：第一带是七阶段生产主链，资料接入、知识检索、内容生成、规则与 Judge 质检由机器完成，
+        人工复核是唯一的人审入口，样本沉淀与成本与链路回放留下证据；样本沉淀通过 few-shot 回注下一次生成。
+        第二带是恢复边界：task 行与 Outbox 行同事务写入，relay 用 skip locked 领取，ack 认 lease token，
+        worker 靠 advisory lock 与 checkpoint 续跑，每 20 秒做一次周期对账，覆盖 pending 缺项、过期 sent 与
+        stale running；预算耗尽的进入死信，需人工处理。第三带是证据：Trace 记录、按 trace_id 回放与成本汇总。
+      </desc>
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 7" refX="7" refY="3.5" markerWidth="7" markerHeight="7"
+          orient="auto-start-reverse">
+          <path d="M0 0 L7 3.5 L0 7 z"></path>
+        </marker>
+        <marker id="arrow-dashed" viewBox="0 0 8 7" refX="7" refY="3.5" markerWidth="7" markerHeight="7"
+          orient="auto-start-reverse">
+          <path d="M0 0 L7 3.5 L0 7 z"></path>
+        </marker>
+      </defs>
+
+      <!-- ① 七阶段主链 ------------------------------------------------->
+      <g class="braces" aria-hidden="true">
+        <path class="group-brace" d="M22 31 V24 H666 V31"></path>
+        <path class="group-brace" d="M678 31 V24 H830 V31"></path>
+        <path class="group-brace" d="M842 31 V24 H1158 V31"></path>
+        <text class="group-label" x="344" y="16">机器判定 · 规则先于模型</text>
+        <text class="group-label" x="754" y="16">人工终审</text>
+        <text class="group-label" x="1000" y="16">沉淀与证据</text>
+      </g>
+
+      <g class="node" data-node="source" data-kind="machine" tabindex="0">
+        <rect class="body" x="22" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="40" cy="64" r="9"></circle>
+        <text class="badge-text" x="40" y="67.5">1</text>
+        <text class="title" x="56" y="69">资料接入</text>
+        <text class="sub" x="36" y="90">教材解析 · 结构切分</text>
+        <text class="sub" x="36" y="106">来源 hash 与页块定位</text>
+      </g>
+
+      <g class="node" data-node="retrieve" data-kind="machine" tabindex="0">
+        <rect class="body" x="186" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="204" cy="64" r="9"></circle>
+        <text class="badge-text" x="204" y="67.5">2</text>
+        <text class="title" x="220" y="69">知识检索</text>
+        <text class="sub" x="200" y="90">两路召回 · 融合排序</text>
+        <text class="sub" x="200" y="106">Top 5 / Top 8 与总预算</text>
+      </g>
+
+      <g class="node" data-node="generate" data-kind="machine" tabindex="0">
+        <rect class="body" x="350" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="368" cy="64" r="9"></circle>
+        <text class="badge-text" x="368" y="67.5">3</text>
+        <text class="title" x="384" y="69">内容生成</text>
+        <text class="sub" x="364" y="90">JSON 模式 · 二次校验</text>
+        <text class="sub" x="364" y="106">题型模板 + few-shot</text>
+      </g>
+
+      <g class="node" data-node="gate" data-kind="machine" tabindex="0">
+        <rect class="body" x="514" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="532" cy="64" r="9"></circle>
+        <text class="badge-text" x="532" y="67.5">4</text>
+        <text class="title" x="548" y="69" font-size="12">规则与 Judge 质检</text>
+        <text class="sub" x="528" y="90">跨字段确定性规则先跑</text>
+        <text class="sub" x="528" y="106">加权 rubric，分数只筛选</text>
+      </g>
+
+      <g class="node" data-node="human" data-kind="human" tabindex="0">
+        <rect class="body" x="678" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="696" cy="64" r="9"></circle>
+        <text class="badge-text" x="696" y="67.5">5</text>
+        <text class="title" x="712" y="69">人工复核</text>
+        <text class="sub" x="692" y="90">按现役模板重跑校验</text>
+        <text class="sub" x="692" y="106">来源核验 + 复核人留痕</text>
+      </g>
+
+      <g class="node" data-node="samples" data-kind="evidence" tabindex="0">
+        <rect class="body" x="842" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="860" cy="64" r="9"></circle>
+        <text class="badge-text" x="860" y="67.5">6</text>
+        <text class="title" x="876" y="69">样本沉淀</text>
+        <text class="sub" x="856" y="90">只收 passed / published</text>
+        <text class="sub" x="856" y="106">按条目 id 幂等</text>
+      </g>
+
+      <g class="node" data-node="evidence" data-kind="evidence" tabindex="0">
+        <rect class="body" x="1006" y="44" width="152" height="76" rx="8"></rect>
+        <circle class="badge-ring" cx="1024" cy="64" r="9"></circle>
+        <text class="badge-text" x="1024" y="67.5">7</text>
+        <text class="title" x="1040" y="69">成本与链路回放</text>
+        <text class="sub" x="1020" y="90">每次调用一条 Trace</text>
+        <text class="sub" x="1020" y="106">能回放这稿怎么来的</text>
+      </g>
+
+      <g class="edge" data-from="source" data-to="retrieve">
+        <line class="edge-line" x1="174" y1="82" x2="184" y2="82"></line>
+        <line class="edge-hit" x1="174" y1="82" x2="184" y2="82"></line>
+      </g>
+      <g class="edge" data-from="retrieve" data-to="generate">
+        <line class="edge-line" x1="338" y1="82" x2="348" y2="82"></line>
+        <line class="edge-hit" x1="338" y1="82" x2="348" y2="82"></line>
+      </g>
+      <g class="edge" data-from="generate" data-to="gate">
+        <line class="edge-line" x1="502" y1="82" x2="512" y2="82"></line>
+        <line class="edge-hit" x1="502" y1="82" x2="512" y2="82"></line>
+      </g>
+      <g class="edge" data-from="gate" data-to="human">
+        <line class="edge-line" x1="666" y1="82" x2="676" y2="82"></line>
+        <line class="edge-hit" x1="666" y1="82" x2="676" y2="82"></line>
+      </g>
+      <g class="edge" data-from="human" data-to="samples">
+        <line class="edge-line" x1="830" y1="82" x2="840" y2="82"></line>
+        <line class="edge-hit" x1="830" y1="82" x2="840" y2="82"></line>
+      </g>
+      <g class="edge" data-from="samples" data-to="evidence">
+        <line class="edge-line" x1="994" y1="82" x2="1004" y2="82"></line>
+        <line class="edge-hit" x1="994" y1="82" x2="1004" y2="82"></line>
+      </g>
+
+      <!-- 样本沉淀回注生成：只取已核验整例，不把示例当 RAG 事实用。 -->
+      <g class="edge" data-from="samples" data-to="generate">
+        <path class="edge-line dashed" d="M918 120 C918 180 426 180 426 122"></path>
+        <path class="edge-hit" d="M918 120 C918 180 426 180 426 122"></path>
+        <text class="edge-label" x="672" y="198">样本沉淀 → 内容生成：few-shot 只取已核验整例，最多 2 个，额外 8192 字符封顶</text>
+      </g>
+
+      <!-- ② 恢复边界：事务 Outbox + 条件租约 --------------------------->
+      <g class="zone" data-zone="recovery">
+        <rect x="22" y="250" width="1136" height="196" rx="12"></rect>
+      </g>
+      <text class="zone-label" x="22" y="240">② 恢复边界 · 「内容生成」之后的投递与租约</text>
+
+      <g class="node" data-node="outbox" data-kind="machine" tabindex="0">
+        <rect class="body" x="36" y="270" width="208" height="86" rx="8"></rect>
+        <text class="title" x="52" y="294">① 同事务写入</text>
+        <text class="sub" x="52" y="316">task 行 + Outbox 行</text>
+        <text class="sub" x="52" y="334">事件号 task:id:dispatch 唯一</text>
+      </g>
+
+      <g class="node" data-node="relay" data-kind="machine" tabindex="0">
+        <rect class="body" x="261" y="270" width="208" height="86" rx="8"></rect>
+        <text class="title" x="277" y="294">② relay 领取</text>
+        <text class="sub" x="277" y="316">skip locked 取最早 pending</text>
+        <text class="sub" x="277" y="334">置 sending，attempts + 1</text>
+      </g>
+
+      <g class="node" data-node="lease" data-kind="machine" tabindex="0">
+        <rect class="body" x="486" y="270" width="208" height="86" rx="8"></rect>
+        <text class="title" x="502" y="294">③ 条件租约 CAS</text>
+        <text class="sub" x="502" y="316">lease token 决定谁能 ack</text>
+        <text class="sub" x="502" y="334">旧 ack 不覆盖新租约</text>
+      </g>
+
+      <g class="node" data-node="worker" data-kind="machine" tabindex="0">
+        <rect class="body" x="711" y="270" width="208" height="86" rx="8"></rect>
+        <text class="title" x="727" y="294">④ worker 执行</text>
+        <text class="sub" x="727" y="316">advisory lock + checkpoint</text>
+        <text class="sub" x="727" y="334">续跑已存节点，不重跑</text>
+      </g>
+
+      <g class="node" data-node="reconcile" data-kind="machine" tabindex="0">
+        <rect class="body" x="936" y="270" width="208" height="86" rx="8"></rect>
+        <text class="title" x="952" y="294">⑤ 周期对账 20 秒</text>
+        <text class="sub" x="952" y="316">pending / dispatched 缺项</text>
+        <text class="sub" x="952" y="334">过期 sent · stale running</text>
+      </g>
+
+      <g class="edge" data-from="outbox" data-to="relay">
+        <line class="edge-line" x1="244" y1="313" x2="259" y2="313"></line>
+        <line class="edge-hit" x1="244" y1="313" x2="259" y2="313"></line>
+      </g>
+      <g class="edge" data-from="relay" data-to="lease">
+        <line class="edge-line" x1="469" y1="313" x2="484" y2="313"></line>
+        <line class="edge-hit" x1="469" y1="313" x2="484" y2="313"></line>
+      </g>
+      <g class="edge" data-from="lease" data-to="worker">
+        <line class="edge-line" x1="694" y1="313" x2="709" y2="313"></line>
+        <line class="edge-hit" x1="694" y1="313" x2="709" y2="313"></line>
+      </g>
+      <g class="edge" data-from="reconcile" data-to="outbox">
+        <path class="edge-line dashed" d="M1040 356 V 372 H 140 V 358"></path>
+        <path class="edge-hit" d="M1040 356 V 372 H 140 V 358"></path>
+        <text class="edge-label" x="590" y="369">发现缺口 → 回填 pending 重新投递</text>
+      </g>
+
+      <text class="note" x="42" y="396">– 预算耗尽 → dead 死信，需人工处理，不无限重投</text>
+      <text class="note" x="42" y="416">– 终态不复活：完成 / 待人工 / 取消 不自动重派</text>
+      <text class="note" x="42" y="436">– 显式 replay：只投所选事件，累计 attempts 与轨迹保留</text>
+
+      <!-- ③ 证据与回流 --------------------------------------------->
+      <text class="zone-label" x="22" y="482">③ 证据 · 每次调用留一条 Trace</text>
+
+      <g class="node" data-node="trace" data-kind="evidence" tabindex="0">
+        <rect class="body" x="22" y="494" width="366" height="84" rx="8"></rect>
+        <text class="title" x="40" y="518">Trace 记录</text>
+        <text class="sub" x="40" y="540">先递归脱敏与截断再写 sink</text>
+        <text class="sub" x="40" y="558">sink 故障落 spool 原子文件</text>
+      </g>
+
+      <g class="node" data-node="replay" data-kind="evidence" tabindex="0">
+        <rect class="body" x="407" y="494" width="366" height="84" rx="8"></rect>
+        <text class="title" x="425" y="518">按 trace_id 回放一稿</text>
+        <text class="sub" x="425" y="540">检索 → 生成 → 校验 → 质检</text>
+        <text class="sub" x="425" y="558">模型 · Token · 耗时 · 成本 · 重试</text>
+      </g>
+
+      <g class="node" data-node="cost" data-kind="evidence" tabindex="0">
+        <rect class="body" x="792" y="494" width="366" height="84" rx="8"></rect>
+        <text class="title" x="810" y="518">成本汇总</text>
+        <text class="sub" x="810" y="540">按题型 / 阶段 / 模型聚合</text>
+        <text class="sub" x="810" y="558">Token 输入输出分开记，金额是配置口径估算</text>
+      </g>
+
+      <g class="edge" data-from="trace" data-to="replay">
+        <line class="edge-line" x1="389" y1="536" x2="405" y2="536"></line>
+        <line class="edge-hit" x1="389" y1="536" x2="405" y2="536"></line>
+      </g>
+      <g class="edge" data-from="replay" data-to="cost">
+        <line class="edge-line" x1="774" y1="536" x2="790" y2="536"></line>
+        <line class="edge-hit" x1="774" y1="536" x2="790" y2="536"></line>
+      </g>
+
+      <text class="note" x="22" y="612">悬停或聚焦任一节点与连线可单独看它那一步；右上角切换深浅主题；减弱动态偏好下不播放过渡。</text>
+    </svg>
+  </div>
+
+  <p class="hint">
+    图取自工作台已落地的实现：主链的规则前置、Judge 加权、人工终审与样本幂等在项目正文里分别展开；
+    恢复边界那一带的 skip locked、租约令牌与周期对账对应「一次生成要跨五个地方保持一致」一篇。
+  </p>
+</main>
+
+<script>
+  (function () {
+    var root = document.documentElement
+    var toggle = document.getElementById('theme-toggle')
+
+    function applyTheme(theme) {
+      root.setAttribute('data-theme', theme)
+      toggle.setAttribute('aria-label', theme === 'dark' ? '切换到浅色主题' : '切换到深色主题')
+      try { localStorage.setItem('english-pipeline-theme', theme) } catch (_) {}
+    }
+
+    toggle.addEventListener('click', function () {
+      applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')
+    })
+
+    try {
+      var stored = localStorage.getItem('english-pipeline-theme')
+      if (stored !== 'light' && stored !== 'dark') {
+        var query = window.matchMedia('(prefers-color-scheme: light)')
+        query.addEventListener('change', function (event) {
+          applyTheme(event.matches ? 'light' : 'dark')
+        })
+      }
+    } catch (_) {}
+
+    // Node / edge focus: keep the hovered step, its edges and its neighbours
+    // legible, dim the rest of the canvas.
+    var svg = document.getElementById('english-pipeline-svg')
+    var nodes = Array.prototype.slice.call(svg.querySelectorAll('.node'))
+    var edges = Array.prototype.slice.call(svg.querySelectorAll('.edge'))
+    var zones = Array.prototype.slice.call(svg.querySelectorAll('.zone'))
+
+    function relatedFor(id) {
+      var nodeIds = {}
+      var edgeSet = []
+      nodeIds[id] = true
+      edges.forEach(function (edge) {
+        if (edge.dataset.from === id || edge.dataset.to === id) {
+          edgeSet.push(edge)
+          nodeIds[edge.dataset.from] = true
+          nodeIds[edge.dataset.to] = true
+        }
+      })
+      return { nodeIds: nodeIds, edgeSet: edgeSet }
+    }
+
+    function focusNode(id) {
+      var related = relatedFor(id)
+      svg.classList.add('is-focused')
+      nodes.forEach(function (node) {
+        node.classList.toggle('is-related', Boolean(related.nodeIds[node.dataset.node]))
+      })
+      edges.forEach(function (edge) {
+        edge.classList.toggle('is-related', related.edgeSet.indexOf(edge) !== -1)
+      })
+      zones.forEach(function (zone) { zone.classList.remove('is-related') })
+    }
+
+    function focusEdge(edge) {
+      var related = relatedFor(edge.dataset.from)
+      var second = relatedFor(edge.dataset.to)
+      svg.classList.add('is-focused')
+      nodes.forEach(function (node) {
+        node.classList.toggle(
+          'is-related',
+          Boolean(related.nodeIds[node.dataset.node] || second.nodeIds[node.dataset.node])
+        )
+      })
+      edges.forEach(function (item) {
+        item.classList.toggle('is-related', item === edge)
+      })
+      zones.forEach(function (zone) { zone.classList.remove('is-related') })
+    }
+
+    function clearFocus() {
+      svg.classList.remove('is-focused')
+      nodes.forEach(function (node) { node.classList.remove('is-related') })
+      edges.forEach(function (edge) { edge.classList.remove('is-related') })
+    }
+
+    nodes.forEach(function (node) {
+      node.addEventListener('mouseenter', function () { focusNode(node.dataset.node) })
+      node.addEventListener('focus', function () { focusNode(node.dataset.node) })
+      node.addEventListener('mouseleave', clearFocus)
+      node.addEventListener('blur', clearFocus)
+    })
+
+    edges.forEach(function (edge) {
+      edge.addEventListener('mouseenter', function () { focusEdge(edge) })
+      edge.addEventListener('mouseleave', clearFocus)
+    })
+
+    svg.addEventListener('mouseleave', clearFocus)
+  })()
+</script>
+</body>
+</html>

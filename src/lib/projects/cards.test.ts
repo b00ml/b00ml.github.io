@@ -182,6 +182,25 @@ describe('repository project content contract', () => {
   })
 })
 
+describe('english workbench public evidence links', () => {
+  test('exposes the public repository and the seven-stage pipeline diagram', () => {
+    const cards = buildProjectCards(loadProjectCollection(CONTENT_DIRS.projects), { isProd: true })
+    const english = cards.find((card) => card.slug === 'english-content-workbench')
+
+    expect(english).toBeDefined()
+
+    const hrefs = (english?.links ?? []).map((link) => link.href)
+    expect(hrefs).toContain('https://github.com/b00ml/english-edit-agent-platform')
+    expect(hrefs).toContain('/diagrams/english-pipeline.html')
+
+    for (const href of hrefs) {
+      if (href.startsWith('/diagrams/')) {
+        expect(existsSync(resolve('public', href.slice(1)))).toBe(true)
+      }
+    }
+  })
+})
+
 describe('project card template and page hygiene', () => {
   test('distinguishes external http(s) URLs from root-relative and mailto project links', () => {
     expect(isExternalProjectLink('https://github.com/b00ml/AI-financialAgent-POC')).toBe(true)

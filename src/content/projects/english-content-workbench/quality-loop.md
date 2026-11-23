@@ -40,4 +40,8 @@ summary: 三层判定
 
 落到证据上：6 条真实内容（单选、完形、阅读各 2 条）跑完自动质检，得分 87.70～91.75，全部落进待人工复核队列。这就是三层拆分换来的东西——机器负责把确定的错和明显不合格的挡在前面，人只对语义负责。
 
+![阅读理解人工质检界面：题目、选项、答案、解析与知识来源同屏，复核人在此通过或驳回。](../../../assets/english-content-workbench/reading-review.webp)
+
+_图：人工复核台就是第三层判定的落点。自动分按维度权重算出来只决定排序，内容表的 qc_score 在这里由人改写为 100 或 0，模型原分留在 auto 记录里。点击图片可以放大。_
+
 另两段：[一份教材怎么变成一道能引用原文的题](/projects/english-content-workbench/rag)；[一次生成要跨五个地方保持一致](/projects/english-content-workbench/reliability)。
