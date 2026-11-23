@@ -13,6 +13,8 @@ highlights:
   - Trace 轨迹 + 二元 Rubric 用例双闭环 · 一次操作一个可撤销 Git 快照
 stack: [MCP, Obsidian 插件, TypeScript, Python, 检索, LLM]
 links:
+  - label: 交互演示
+    href: /projects/ark-workbench/demo/
   - label: 全渠道架构图
     href: /diagrams/ark-architecture.html
 ---
@@ -67,6 +69,10 @@ links:
 5. **接第二个宿主**：Claude Code 用 `.mcp.json`、DSH 用 Cordis YAML 条目，指向同一个 `/mcp` 并带上 `Authorization: Bearer`，然后问一个只读问题，看它是否带出处、资料不足时是否直说。
 
 只想把它当 MCP 服务用时，第 4 步可以跳过——不启用 Agent 和插件，进程只提供 Core 工具。
+
+## 先动手，再读字
+
+[交互演示](/projects/ark-workbench/demo/)在浏览器里还原了同一套双区工作台：左/中是笔记真源、Collect 采集库、Tasks 看板与多端渠道模拟台，右侧是常驻的对话、历史、记忆与设置边栏。顶部三个预设剧本可以把「免审批写入 + 一键回滚」「跨端采集到外发拦截」「记忆确认与并发保护」各走一遍，用的规则和仓库里被测的状态机是同一份。
 
 <iframe src="/diagrams/ark-architecture.html" title="Ark v2 全渠道交互架构图" loading="lazy" style="width:100%;height:720px;border:1px solid #8884;border-radius:8px;"></iframe>
 
