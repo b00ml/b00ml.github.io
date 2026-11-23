@@ -201,6 +201,206 @@ describe('english workbench public evidence links', () => {
   })
 })
 
+/**
+ * Ark v2 rebuilt the project from the ground up: the overview now speaks as a
+ * near-public product page, the four deep dives are new pages, and the old v1
+ * sub-pages (and the v1-only diagrams they embedded) must leave no ghost route
+ * behind. These assertions read the real corpus so a stale number or a dangling
+ * sub-page link fails the suite instead of shipping.
+ */
+describe('ark workbench v2 content contract', () => {
+  const ARK_DIR = 'src/content/projects/ark-workbench'
+  const V2_SUBPAGES = ['v1-to-v2', 'multi-host-and-context', 'memory-and-plugins', 'eval-loops']
+  const V1_SUBPAGES = ['pipeline', 'runtime', 'memory', 'evidence']
+
+  const read = (path: string) => readFileSync(resolve(path), 'utf8')
+  const frontmatterOf = (path: string) => {
+    const raw = read(path)
+    const end = raw.indexOf('\n---', 3)
+    return raw.slice(0, end === -1 ? raw.length : end)
+  }
+  const bodyOf = (path: string) => {
+    const raw = read(path)
+    const end = raw.indexOf('\n---', 3)
+    return end === -1 ? '' : raw.slice(end + 4)
+  }
+
+  test('the overview card carries v2 metrics, four parts, and no v1 repository link', () => {
+    const entries = loadProjectCollection(CONTENT_DIRS.projects)
+    const ark = buildProjectCards(entries, { isProd: true }).find(
+      (card) => card.slug === 'ark-workbench'
+    )
+
+    expect(ark).toBeDefined()
+    expect(ark?.partCount).toBe(4)
+
+    const highlights = (ark?.highlights ?? []).join(' ')
+    expect(highlights).toContain('658')
+    expect(highlights).toMatch(/2k/)
+    expect(highlights).toMatch(/4k/)
+    expect(highlights).toMatch(/双宿主|Claude Code/)
+    expect(highlights).toMatch(/Trace|Rubric|回归/)
+
+    const hrefs = (ark?.links ?? []).map((link) => link.href)
+    expect(hrefs).toContain('/diagrams/ark-architecture.html')
+    expect(hrefs.some((href) => href.includes('obsidian-ark-agent'))).toBe(false)
+    // T05 owns the interactive demo; this ticket must not sneak one in.
+    expect(hrefs.some((href) => href.includes('/demo'))).toBe(false)
+  })
+
+  test('publishes exactly the four v2 deep dives, ordered 1..4, each with its own metadata', () => {
+    const pages = V2_SUBPAGES.map((slug) => `${ARK_DIR}/${slug}.md`)
+    for (const path of pages) expect(existsSync(resolve(path))).toBe(true)
+
+    for (const slug of V1_SUBPAGES) {
+      expect(existsSync(resolve(`${ARK_DIR}/${slug}.md`))).toBe(false)
+    }
+
+    const entries = loadProjectCollection(CONTENT_DIRS.projects).filter(
+      (item) => item.id.startsWith('ark-workbench/') && !item.id.endsWith('index')
+    )
+    expect(entries.map((item) => item.id.replace('ark-workbench/', '')).sort()).toEqual(
+      [...V2_SUBPAGES].sort()
+    )
+    expect(entries.map((item) => item.data.order).sort()).toEqual([1, 2, 3, 4])
+
+    for (const item of entries) {
+      expect(item.data.title.trim().length).toBeGreaterThan(0)
+      expect(item.data.description.trim().length).toBeGreaterThan(20)
+      expect(item.data.summary?.trim().length ?? 0).toBeGreaterThan(0)
+    }
+
+    const overview = bodyOf(`${ARK_DIR}/index.md`)
+    for (const slug of V2_SUBPAGES) {
+      expect(overview).toContain(`/projects/ark-workbench/${slug}`)
+    }
+    for (const slug of V1_SUBPAGES) {
+      // Anchored so `memory-and-plugins` is not read as a link to `memory`.
+      expect(overview).not.toMatch(new RegExp(`/projects/ark-workbench/${slug}(?![\\w-])`))
+    }
+  })
+
+  test('the overview reads as a product page: no milestone codes, no v1 numbers, explicit pre-release note', () => {
+    const path = `${ARK_DIR}/index.md`
+    const raw = read(path)
+    const frontmatter = frontmatterOf(path)
+    const body = bodyOf(path)
+    const publicText = `${frontmatter}\n${body}`
+
+    expect(publicText).not.toMatch(/\bM[0-9][a-z]?\b/)
+    expect(publicText).not.toContain('3,778')
+    expect(publicText).not.toContain('五套')
+    expect(publicText).not.toContain('七层证据')
+    expect(publicText).not.toContain('155 个文件')
+    expect(publicText).not.toContain('563')
+
+    expect(body).toContain('v2 开源发布准备中')
+    expect(body).toContain('658')
+    expect(body).toMatch(/2k/)
+    expect(body).toMatch(/4k/)
+    expect(body).toMatch(/Claude Code/)
+    expect(body).toMatch(/DSH/)
+    // Five hard constraints and a five-step local start, both spelled out.
+    expect(body).toMatch(/硬约束/)
+    expect(body).toMatch(/raw\//)
+    expect(body).toMatch(/\.env/)
+    expect(body).toMatch(/ark serve/)
+    expect(body).toMatch(/ark init/)
+    expect((body.match(/^\d\. /gm) ?? []).length).toBeGreaterThanOrEqual(5)
+  })
+
+  test('multi-host claims are graded: AstrBot and AgentMail never read as verified', () => {
+    const content = read(`${ARK_DIR}/multi-host-and-context.md`)
+
+    // Both grades are stated in the reader's language, not implied.
+    expect(content).toContain('已完成实机')
+    expect(content).toContain('自动验收')
+    expect(content).toContain('标准 MCP 协议扩展接入')
+
+    for (const line of content.split('\n')) {
+      if (/AstrBot|AgentMail/.test(line)) {
+        expect(line).not.toMatch(/验收通过|已验收|已完成实机|已支持/)
+      }
+    }
+
+    // The MCP-extension grade names both external channels and says outright
+    // that neither has had a real-machine acceptance run.
+    const graded = content.split(/\n(?=### )/).find((section) => section.startsWith('### 标准 MCP'))
+    expect(graded).toBeDefined()
+    expect(graded).toMatch(/AstrBot/)
+    expect(graded).toMatch(/AgentMail/)
+    expect(graded).toMatch(/未/)
+
+    // The verified grade lists the hosts that really were accepted, with versions.
+    const verified = content.split(/\n(?=### )/).find((section) =>
+      section.startsWith('### 已完成实机')
+    )
+    expect(verified).toBeDefined()
+    expect(verified).toMatch(/Claude Code 2\.1\.304/)
+    expect(verified).toMatch(/DSH 0\.1\.0-rc\.7/)
+    expect(verified).not.toMatch(/AstrBot|AgentMail/)
+  })
+
+  test('the v1-to-v2 and memory pages keep their load-bearing rules and honest boundaries', () => {
+    const migration = read(`${ARK_DIR}/v1-to-v2.md`)
+    expect(migration).toMatch(/审批/)
+    expect(migration).toMatch(/快照/)
+    expect(migration).toMatch(/undo|撤销/)
+    expect(migration).toMatch(/外部.*(确认|不可逆)/)
+
+    const memory = read(`${ARK_DIR}/memory-and-plugins.md`)
+    expect(memory).toContain('[推测，未确认]')
+    expect(memory).toMatch(/inferred/)
+    expect(memory).toMatch(/confirmed/)
+    expect(memory).toMatch(/via/)
+    expect(memory).toMatch(/Markdown/)
+    expect(memory).toMatch(/不建私有库|不建私有数据库|私有数据库/)
+
+    const evals = read(`${ARK_DIR}/eval-loops.md`)
+    expect(evals).toContain('.ark/traces')
+    expect(evals).toMatch(/promote/)
+    expect(evals).toMatch(/rubric/)
+    expect(evals).toContain('evals/gate.py')
+    expect(evals).toMatch(/skipped/)
+    expect(evals).toContain('--strict')
+  })
+
+  test('the all-channel diagram is self-contained, themed, focusable, and replaces every v1 diagram', () => {
+    const diagramPath = resolve('public/diagrams/ark-architecture.html')
+    const diagram = readFileSync(diagramPath, 'utf8')
+
+    expect(diagram).toContain('<svg')
+    expect(diagram).toContain('data-theme')
+    expect(diagram).toContain('prefers-reduced-motion')
+    // Focus-on-hover is the interaction the ticket asks for.
+    expect(diagram).toMatch(/:hover|mouseenter|pointerenter/)
+    // Zero external dependencies: no CDN script, font or stylesheet.
+    expect(diagram).not.toMatch(/<script[^>]+src=/i)
+    expect(diagram).not.toMatch(/<link[^>]+href=["']https?:/i)
+    expect(diagram).not.toMatch(/@import\s+url\(/i)
+    expect(diagram).not.toMatch(/src=["']https?:\/\//i)
+
+    for (const label of ['Obsidian', 'Claude Code', 'DSH', 'AstrBot', 'AgentMail', 'ark serve']) {
+      expect(diagram).toContain(label)
+    }
+    // The two grades are visible on the canvas itself.
+    expect(diagram).toMatch(/已完成实机|实机验收/)
+    expect(diagram).toMatch(/扩展接入|未验收/)
+
+    for (const stale of [
+      'ark-operation-ledger.html',
+      'ark-memory-governance.html',
+      'ark-response-sequence.html'
+    ]) {
+      expect(existsSync(resolve(`public/diagrams/${stale}`))).toBe(false)
+    }
+    const arkSources = [...V2_SUBPAGES, 'index'].map((slug) => read(`${ARK_DIR}/${slug}.md`))
+    for (const source of arkSources) {
+      expect(source).not.toMatch(/ark-operation-ledger|ark-memory-governance|ark-response-sequence/)
+    }
+  })
+})
+
 describe('project card template and page hygiene', () => {
   test('distinguishes external http(s) URLs from root-relative and mailto project links', () => {
     expect(isExternalProjectLink('https://github.com/b00ml/AI-financialAgent-POC')).toBe(true)

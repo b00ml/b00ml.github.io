@@ -3,8 +3,6 @@ title: 'Agent 评测是实践科学：先转飞轮，再谈指标'
 description: '读美团图灵团队的评测长文：评测对象怎么变了，客观与主观怎么搭，Rubric 怎么二元化，基建七件事与 L0–L3 成熟度，以及为什么 Bad Case 比精妙的指标体系值钱。'
 pubDate: 2026-11-02
 tags: ['agent', '评测', '方法论']
-featured: true
-featuredOrder: 4
 ---
 
 > 读[《Agent评测漫谈 —— 由浅入深讲解Agent评测》](https://mp.weixin.qq.com/s/gZKWRqznB8sNBFf69fBIvw)（美团图灵团队 · 公众号），把能搬进个人项目的部分搬出来：评测对象怎么变了，客观与主观怎么搭，主观标准怎么对齐，以及为什么 Bad Case 比精妙的指标体系值钱。

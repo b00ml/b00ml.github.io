@@ -379,22 +379,30 @@ describe('repository homepage curation contract', () => {
       }))
     ).toEqual([
       {
+        href: '/blog/20261123-controlling-ai-written-code',
+        collectionLabel: '工程实践'
+      },
+      {
+        href: '/product/20261123-from-lowcode-to-own-pipeline',
+        collectionLabel: '产品思考'
+      },
+      {
         href: '/blog/20261018-agent-engineering-8-skills',
         collectionLabel: '工程实践'
       },
       {
         href: '/product/20261018-vertical-agent-moat',
         collectionLabel: '产品思考'
-      },
-      {
-        href: '/blog/20261017-personal-context-assets',
-        collectionLabel: '工程实践'
-      },
-      {
-        href: '/blog/20261102-agent-eval-practice',
-        collectionLabel: '工程实践'
       }
     ])
+
+    // The de-identified B-end diagnosis essay stays published in /product and its tag
+    // pages, but it must not take one of the four curated homepage slots.
+    const laborPitch = product.find(
+      (entry) => entry.id === '20261123-why-i-killed-the-labor-saving-pitch'
+    )
+    expect(laborPitch?.data.draft).toBe(false)
+    expect(laborPitch?.data.featured).toBe(false)
 
     for (const item of vm.featuredWriting) {
       expect(item.readingTime).toMatch(/^\d+ 分钟阅读$/)
