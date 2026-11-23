@@ -12,6 +12,8 @@ highlights:
   - Outbox 投递 + 三层幂等 · 44/44 原文页码回溯
 stack: [出题流水线, 规则质检, 人工审核]
 links:
+  - label: 交互演示
+    href: /projects/english-content-workbench/demo/
   - label: 七阶段流水线图
     href: /diagrams/english-pipeline.html
   - label: 开源仓库
@@ -29,6 +31,8 @@ links:
 把一份英语教材丢进去，出来一批题：单选、完形、阅读。每道题带着答案、解析，和一个能点回原文的片段——那一页、那一块。规则先拒掉能确定的错，模型再判语感、干扰项质量、解析够不够，人看最后一眼，通过的那批存成样本。
 
 它要回答的不是「能不能生成」，而是「生成之后，谁凭什么信它对」。
+
+> [打开交互演示](/projects/english-content-workbench/demo/)：免安装、免登录，无需任何后端或密钥。演示用合成教材与预置轮次确定性回放，浏览器内不调用任何模型；刷新即回到初始预设。
 
 ![内容生成界面：按知识点、题型、难度和数量批量出题，生成结果带结构化校验与本次参数。](../../../assets/english-content-workbench/generation.webp)
 
