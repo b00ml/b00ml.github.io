@@ -493,7 +493,11 @@ describe('english workbench interactive demo entry', () => {
     const runtime = resolve(`${DEMO_DIR}/demo.js`)
     expect(existsSync(page)).toBe(true)
     expect(existsSync(runtime)).toBe(true)
-    expect(readFileSync(page, 'utf8')).toContain('src="./demo.js"')
+    // Site-absolute, because the dev server answers the slash-less `/demo` too,
+    // where a relative `./demo.js` would resolve one directory too high.
+    expect(readFileSync(page, 'utf8')).toContain(
+      'src="/projects/english-content-workbench/demo/demo.js"'
+    )
   })
 
   test('the project card exposes it as an internal, root-relative target', () => {

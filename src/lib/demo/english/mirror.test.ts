@@ -50,8 +50,11 @@ describe('shipped runtime mirrors the authoritative state machine', () => {
     expect(existsSync(PAGE)).toBe(true)
     expect(existsSync(RUNTIME)).toBe(true)
     expect(existsSync(MACHINE)).toBe(true)
-    // The page loads its runtime as a sibling asset, not from a bundler.
-    expect(page).toContain('src="./demo.js"')
+    // The page loads its runtime as its own asset, not from a bundler. The
+    // specifier is site-absolute because `trailingSlash: 'never'` lets the dev
+    // server answer the same page at the slash-less `/demo`, where a relative
+    // `./demo.js` would resolve one directory too high and silently 404.
+    expect(page).toContain('src="/projects/english-content-workbench/demo/demo.js"')
   })
 
   test('the runtime names every action the reducer accepts', () => {
