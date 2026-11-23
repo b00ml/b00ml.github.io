@@ -1,0 +1,2415 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ark v2 交互演示 · 双区合体工作台</title>
+<meta name="description" content="Ark v2 知识工作台的双区交互演示：左侧笔记真源、Collect 采集库、Tasks 看板与多端渠道模拟台，右侧常驻对话、历史、记忆与设置边栏。零后端，全部状态由纯函数状态机驱动。">
+<link rel="icon" href="/favicon.svg">
+<style>
+  /* ── 主题变量：沿用 Ark Obsidian 面板的命名，页面自带一份，不依赖任何外部样式 ── */
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    --r-s: 6px; --r-m: 10px; --r-l: 14px;
+    --ok: #3fb27f; --warn: #d9a441; --danger: #e5534b;
+  }
+  [data-theme="dark"] {
+    --bg: #1b1b1b; --bg-2: #222222; --bg-3: #2a2a2a; --bg-4: #141414;
+    --border: #383838; --border-soft: #2c2c2c;
+    --text: #dcdcdc; --muted: #a2a2a2; --faint: #747474;
+    --accent: #8b7cf6; --accent-soft: rgba(139,124,246,.14); --hover: rgba(255,255,255,.05);
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.28);
+    --add: #7fd1a2; --del: #e88b86;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --bg-2: #f7f7f7; --bg-3: #efefef; --bg-4: #ececec;
+    --border: #dedede; --border-soft: #eaeaea;
+    --text: #232323; --muted: #5f5f5f; --faint: #909090;
+    --accent: #6c5ce7; --accent-soft: rgba(108,92,231,.1); --hover: rgba(0,0,0,.04);
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 10px 30px rgba(0,0,0,.07);
+    --add: #1d7a45; --del: #b0443c;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg-4); color: var(--text);
+    font: 14px/1.6 var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  code, pre, .mono { font-family: var(--font-mono); }
+
+  /* ── 外壳 ── */
+  .app { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+  .topbar {
+    flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+    height: 52px; border-bottom: 1px solid var(--border-soft); background: var(--bg);
+  }
+  .brand { display: flex; align-items: center; gap: 7px; font-weight: 650; letter-spacing: .01em; }
+  .brand svg { width: 19px; height: 19px; color: var(--accent); }
+  .brand small { font-weight: 500; font-size: 11.5px; color: var(--faint); letter-spacing: .06em; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(63,178,127,.18); }
+  .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(217,164,65,.18); }
+  .spacer { flex: 1; }
+  .top-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: var(--r-s);
+    border: 1px solid var(--border); background: var(--bg-2); color: var(--text);
+    font-size: 12.5px; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--faint); background: var(--bg-3); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 550; }
+  .btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn-ghost:hover { background: var(--hover); color: var(--text); border-color: var(--border-soft); }
+  .btn-danger { color: var(--danger); border-color: rgba(229,83,75,.4); background: transparent; }
+  .btn-danger:hover { background: rgba(229,83,75,.1); border-color: var(--danger); }
+  .btn-xs { padding: 2px 8px; font-size: 11.5px; border-radius: 5px; }
+  .btn[disabled] { opacity: .42; cursor: not-allowed; }
+  .btn[disabled]:hover { border-color: var(--border); background: var(--bg-2); }
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-s);
+    border: 1px solid transparent; background: transparent; color: var(--muted);
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  .scenario {
+    display: inline-flex; flex-direction: column; gap: 0; align-items: flex-start;
+    padding: 3px 10px 4px; border-radius: var(--r-s); border: 1px solid var(--border);
+    background: var(--bg-2); text-align: left; line-height: 1.25;
+  }
+  .scenario strong { font-size: 12px; font-weight: 600; }
+  .scenario span { font-size: 10px; color: var(--faint); letter-spacing: .02em; }
+  .scenario:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .scenario[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .scenario[aria-pressed="true"] strong { color: var(--text); }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+  .workspace { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .sidebar {
+    width: min(430px, 40vw); flex: none; display: flex; flex-direction: column;
+    border-left: 1px solid var(--border); background: var(--bg-2);
+  }
+
+  /* ── 标签页 ── */
+  .tabs {
+    flex: none; display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border-soft);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border: 0; border-radius: var(--r-s); background: transparent; color: var(--muted);
+    font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  }
+  .tab:hover { background: var(--hover); color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--hover); }
+  .tab[aria-selected="true"]::after {
+    content: ""; position: absolute; left: 10px; right: 10px; bottom: -6px; height: 2px;
+    background: var(--accent); border-radius: 2px;
+  }
+  .tab .badge-count {
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent-soft);
+    color: var(--accent); font: 600 10.5px/16px var(--font-mono); text-align: center;
+  }
+  .pane { flex: 1; min-height: 0; overflow-y: auto; }
+  .pane[hidden] { display: none; }
+  .pane-body { padding: 14px 16px 24px; }
+  .ws-note-pane.pane-body { padding: 14px 18px 24px; }
+
+  /* ── 通用排版 ── */
+  p.ssub { margin: 0; font-size: 12px; color: var(--faint); }
+  .card {
+    border: 1px solid var(--border-soft); border-radius: var(--r-m); background: var(--bg-2);
+  }
+  .kv { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .kv .spacer { flex: 1; }
+  .badge {
+    font: 600 10.5px/1.7 var(--font-mono); padding: 0 6px; border-radius: 4px; white-space: nowrap;
+    background: var(--bg-3); color: var(--muted); border: 1px solid var(--border-soft);
+  }
+  .badge.agent { color: #8ab4f8; border-color: #2f4566; background: #1e2836; }
+  .badge.obsidian { color: #b48ef0; border-color: #4b3a6b; background: #2a2235; }
+  .badge.host { color: #7fd1a2; border-color: #2f5442; background: #1c2b24; }
+  .badge.plugin { color: #e0b062; border-color: #5a4a2a; background: #2b2519; }
+  .badge.undone { color: var(--faint); }
+  [data-theme="light"] .badge.agent { color: #1a56c4; background: #e9f0fe; border-color: #cfe0fb; }
+  [data-theme="light"] .badge.obsidian { color: #6b3fa0; background: #f3ebfd; border-color: #e0cff7; }
+  [data-theme="light"] .badge.host { color: #1d7a45; background: #e9f7ef; border-color: #cceadb; }
+  [data-theme="light"] .badge.plugin { color: #8a5a12; background: #fdf4e3; border-color: #f2e2c0; }
+
+  /* ── 笔记真源 ── */
+  .note-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .note-head .path { font: 12.5px var(--font-mono); color: var(--text); }
+  .source {
+    border: 1px solid var(--border); border-radius: var(--r-m); overflow: hidden; background: var(--bg-2);
+  }
+  .source-bar {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--faint);
+  }
+  .source-body { padding: 10px 0; overflow-x: auto; font: 12.5px/1.75 var(--font-mono); }
+  .ln { display: flex; gap: 10px; padding: 0 12px; white-space: pre; }
+  .ln:hover { background: var(--hover); }
+  .ln-no { width: 2.4em; flex: none; text-align: right; color: var(--faint); opacity: .6; user-select: none; }
+  .ln.fm .ln-txt { color: var(--faint); }
+  .ln.key .ln-txt { color: var(--accent); }
+  .ln.head .ln-txt { color: var(--text); font-weight: 650; }
+  .ln.li .ln-txt { color: var(--muted); }
+  .ln .wikilink { color: var(--accent); border-bottom: 1px dashed rgba(139,124,246,.5); }
+
+  /* ── Collect 三栏 ── */
+  .collect { display: grid; grid-template-columns: 176px minmax(0, 1fr) minmax(0, .92fr); height: 100%; }
+  .collect-side { border-right: 1px solid var(--border-soft); padding: 12px 10px; overflow-y: auto; }
+  .collect-mid { min-width: 0; display: flex; flex-direction: column; }
+  .collect-detail { border-left: 1px solid var(--border-soft); padding: 14px 14px 24px; overflow-y: auto; }
+  .side-group + .side-group { margin-top: 16px; }
+  .side-heading {
+    font: 600 10.5px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--faint); padding: 0 8px 6px;
+  }
+  .side-link {
+    display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
+    padding: 5px 8px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--muted);
+    font-size: 12.5px;
+  }
+  .side-link:hover { background: var(--hover); color: var(--text); }
+  .side-link[aria-current="true"] { background: var(--accent-soft); color: var(--text); font-weight: 550; }
+  .side-link .count { margin-left: auto; font: 600 10.5px var(--font-mono); color: var(--faint); }
+  .side-link .glyph { width: 14px; text-align: center; color: var(--faint); flex: none; }
+  .capture {
+    display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft);
+  }
+  .capture input {
+    flex: 1; min-width: 0; height: 32px; padding: 0 9px; border-radius: var(--r-s);
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12.5px;
+  }
+  .capture input::placeholder { color: var(--faint); }
+  .list-tools {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-s); overflow: hidden; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); padding: 3px 9px; font-size: 11.5px;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+  .list-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
+  .entry {
+    display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left;
+    padding: 8px 9px; border: 1px solid transparent; border-radius: var(--r-s);
+    background: transparent; color: var(--text);
+  }
+  .entry:hover { background: var(--hover); }
+  .entry[aria-pressed="true"] { background: var(--accent-soft); border-color: rgba(139,124,246,.35); }
+  .entry-mark {
+    flex: none; font: 600 9px/1.9 var(--font-mono); padding: 0 5px; border-radius: 4px;
+    border: 1px solid var(--border); color: var(--muted); background: var(--bg-3); margin-top: 1px;
+  }
+  .entry-mark.video { color: #e79bb3; border-color: #5c3244; background: #2a1e24; }
+  [data-theme="light"] .entry-mark.video { color: #a5305a; border-color: #f0cdd9; background: #fdf0f4; }
+  .entry-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .entry-title {
+    font-size: 12.8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .entry-sub { font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-pill {
+    flex: none; font: 600 10px/1.8 var(--font-mono); padding: 0 6px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .status-pill.done { color: var(--ok); border-color: rgba(63,178,127,.45); }
+  .status-pill.processing { color: var(--warn); border-color: rgba(217,164,65,.45); }
+  .status-pill.failed { color: var(--danger); border-color: rgba(229,83,75,.45); }
+  .cards { display: grid; gap: 8px; padding: 10px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .entry-card {
+    display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px;
+    border: 1px solid var(--border-soft); border-radius: var(--r-m); background: var(--bg-2); color: var(--text);
+  }
+  .entry-card:hover { border-color: var(--faint); }
+  .entry-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .entry-card .card-top { display: flex; align-items: center; gap: 6px; }
+  .entry-card .card-excerpt { font-size: 11.5px; color: var(--muted); min-height: 2.6em; }
+  .entry-card .card-excerpt.failed { color: var(--danger); }
+  .detail-source { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); }
+  .detail-title { margin: 8px 0 4px; font-size: 15px; line-height: 1.45; }
+  .detail-url { font: 11px var(--font-mono); color: var(--accent); word-break: break-all; text-decoration: none; }
+  .detail-url:hover { text-decoration: underline; }
+  .detail-sec { margin-top: 14px; }
+  .detail-sec h4 {
+    margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+    font-weight: 650;
+  }
+  .detail-sec p { margin: 0; font-size: 13px; color: var(--text); }
+  .detail-sec ul { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+  .detail-sec li + li { margin-top: 3px; }
+  .error-box {
+    border-left: 3px solid var(--danger); background: rgba(229,83,75,.08); padding: 9px 11px;
+    border-radius: var(--r-s); font-size: 12.5px;
+  }
+  .error-box strong { display: block; margin-bottom: 3px; }
+  .empty {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px;
+    color: var(--faint); font-size: 12.5px; text-align: center;
+  }
+
+  /* ── Tasks 看板 ── */
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; }
+  .col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .col-head {
+    display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11.5px; color: var(--muted);
+  }
+  .col-head .n { margin-left: auto; font: 600 10.5px var(--font-mono); color: var(--faint); }
+  .task {
+    border: 1px solid var(--border-soft); border-radius: var(--r-s); background: var(--bg-2);
+    padding: 8px 9px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .task.done { opacity: .72; }
+  .task-title { font-size: 12.8px; line-height: 1.45; }
+  .task.done .task-title { text-decoration: line-through; color: var(--muted); }
+  .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .due {
+    font: 600 9.5px/1.7 var(--font-mono); padding: 0 5px; border-radius: 4px;
+    color: var(--warn); border: 1px solid rgba(217,164,65,.45); background: rgba(217,164,65,.08);
+  }
+  .task-move { display: flex; gap: 4px; margin-left: auto; }
+  .ctx-preview {
+    margin: 0 12px 16px; border: 1px dashed var(--border); border-radius: var(--r-m); padding: 10px 12px;
+    background: var(--bg-2);
+  }
+  .ctx-preview h4 {
+    margin: 0 0 6px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+  }
+  .ctx-preview pre { margin: 0; font: 11.5px/1.7 var(--font-mono); color: var(--muted); white-space: pre-wrap; }
+
+  /* ── 渠道模拟台 ── */
+  .channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 10px; padding: 12px; }
+  .channel {
+    display: flex; flex-direction: column; gap: 8px; padding: 12px;
+    border: 1px solid var(--border-soft); border-radius: var(--r-m); background: var(--bg-2);
+  }
+  .channel-top { display: flex; align-items: center; gap: 7px; }
+  .channel-name { font-size: 13.5px; font-weight: 600; }
+  .grade {
+    margin-left: auto; font: 600 9.5px/1.8 var(--font-mono); padding: 0 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .grade.verified { color: var(--ok); border: 1px solid rgba(63,178,127,.45); background: rgba(63,178,127,.09); }
+  .grade.mcp { color: var(--warn); border: 1px solid rgba(217,164,65,.5); background: rgba(217,164,65,.1); }
+  .channel-detail { font-size: 11.5px; color: var(--muted); line-height: 1.6; margin: 0; }
+  .channel-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+  .channel-state {
+    display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint);
+    border-top: 1px solid var(--border-soft); padding-top: 7px;
+  }
+  .thread-card { margin: 0 12px 12px; padding: 12px; }
+  .thread-card h4 { margin: 0 0 8px; font-size: 12px; font-weight: 650; }
+  .conflict {
+    display: flex; flex-direction: column; gap: 3px; margin-top: 8px; padding: 8px 10px;
+    border-left: 3px solid var(--warn); background: rgba(217,164,65,.08); border-radius: var(--r-s);
+    font-size: 12px;
+  }
+  .conflict .cf-head { display: flex; align-items: center; gap: 6px; font: 600 11px var(--font-mono); color: var(--warn); }
+
+  /* ── 右侧边栏：对话 ── */
+  .ctx-bar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px dashed var(--border-soft); font-size: 11.5px; color: var(--faint);
+  }
+  .ctx-note {
+    display: inline-flex; align-items: center; gap: 5px; max-width: 170px; padding: 3px 8px;
+    border: 1px solid var(--border); border-radius: 999px; color: var(--text); font-size: 11.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ctx-actions { display: flex; gap: 2px; margin-left: auto; }
+  .messages { padding: 14px 14px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .msg { display: flex; flex-direction: column; gap: 5px; }
+  .msg-user { align-items: flex-end; }
+  .msg-user .bubble {
+    max-width: 86%; padding: 7px 12px; border-radius: 12px 12px 4px 12px;
+    background: var(--accent-soft); border: 1px solid rgba(139,124,246,.26); font-size: 13px;
+  }
+  .msg-agent .bubble { border-left: 2px solid var(--border); padding: 1px 0 1px 11px; font-size: 13px; }
+  .msg-system .bubble {
+    border-left: 2px solid var(--warn); padding: 4px 0 4px 11px; font-size: 12px; color: var(--muted);
+    font-family: var(--font-mono);
+  }
+  .msg-meta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--faint); }
+  .msg-user .msg-meta { justify-content: flex-end; }
+  .trace { border: 1px solid var(--border-soft); border-radius: var(--r-m); background: var(--bg-3); }
+  .trace > summary {
+    display: flex; align-items: center; gap: 7px; padding: 6px 10px; cursor: pointer;
+    font-size: 11.5px; color: var(--muted); list-style: none;
+  }
+  .trace > summary::-webkit-details-marker { display: none; }
+  .trace > summary::before {
+    content: "\25B8"; color: var(--faint); font-size: 10px; transition: transform .15s;
+  }
+  .trace[open] > summary::before { transform: rotate(90deg); }
+  .trace-stats { margin-left: auto; font: 10.5px var(--font-mono); color: var(--faint); }
+  .trace-body { padding: 0 10px 9px; }
+  .steps { list-style: none; margin: 0; padding: 2px 0 0 6px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .step { position: relative; padding-left: 12px; }
+  .step::before {
+    content: ""; position: absolute; left: -4.5px; top: 6px; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--bg-3); border: 1.5px solid var(--accent);
+  }
+  .step-head { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; flex-wrap: wrap; }
+  .step-tool { font-weight: 600; font-family: var(--font-mono); font-size: 11px; }
+  .step-arg { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+  .step-ms { margin-left: auto; font: 10px var(--font-mono); color: var(--faint); }
+  .step-result {
+    margin-top: 3px; padding: 5px 8px; border-radius: 5px; background: var(--bg);
+    border: 1px solid var(--border-soft); font: 11px/1.55 var(--font-mono); color: var(--muted);
+  }
+  .confirm {
+    border: 1px solid rgba(217,164,65,.5); background: rgba(217,164,65,.07);
+    border-radius: var(--r-m); padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .confirm-head { display: flex; align-items: center; gap: 7px; font-weight: 650; font-size: 12.5px; }
+  .confirm-head svg { width: 15px; height: 15px; color: var(--warn); flex: none; }
+  .confirm-body { font-size: 12.5px; }
+  .confirm-raw { font: 11px var(--font-mono); color: var(--faint); }
+  .confirm-raw summary { cursor: pointer; }
+  .confirm-raw pre { margin: 5px 0 0; white-space: pre-wrap; color: var(--muted); }
+  .confirm-actions { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .confirm-hint { font-size: 10.5px; color: var(--faint); margin-left: auto; }
+  .confirm.done { border-color: var(--border-soft); background: var(--bg-3); }
+  .confirm.done .confirm-actions { display: none; }
+
+  /* ── 历史 ── */
+  .timeline { padding: 12px 14px 24px; }
+  .tl-row { position: relative; display: flex; gap: 10px; padding: 8px 0 12px 15px; }
+  .tl-row::before { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 1px; background: var(--border-soft); }
+  .tl-row:last-child::before { bottom: calc(100% - 14px); }
+  .tl-dot {
+    position: absolute; left: 0; top: 14px; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--bg-2); border: 1.5px solid var(--accent);
+  }
+  .tl-row.reverted .tl-dot { border-color: var(--faint); }
+  .tl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .tl-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; }
+  .tl-summary { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .tl-time { margin-left: auto; font: 10.5px var(--font-mono); color: var(--faint); flex: none; }
+  .diff {
+    font: 11px/1.55 var(--font-mono); background: var(--bg-3); border: 1px solid var(--border-soft);
+    border-radius: 5px; padding: 6px 8px; overflow-x: auto;
+  }
+  .diff div { white-space: pre; }
+  .diff .add { color: var(--add); }
+  .diff .del { color: var(--del); }
+  .diff .ctx { color: var(--faint); }
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); }
+  .chip {
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+  /* ── 记忆 ── */
+  .mem-group { padding: 12px 14px 0; }
+  .mem-group h4 {
+    margin: 0 0 8px; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mem {
+    display: grid; grid-template-columns: 3px 1fr; border: 1px solid var(--border-soft);
+    border-radius: var(--r-m); overflow: hidden; background: var(--bg-3);
+  }
+  .mem + .mem { margin-top: 8px; }
+  .mem-accent { background: var(--faint); }
+  .mem.inferred .mem-accent { background: var(--warn); }
+  .mem.confirmed .mem-accent { background: var(--ok); }
+  .mem-inner { padding: 9px 11px; display: flex; flex-direction: column; gap: 5px; }
+  .mem-top { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--faint); flex-wrap: wrap; }
+  .pill {
+    padding: 0 6px; border-radius: 999px; font: 600 10px/1.8 var(--font-mono); border: 1px solid var(--border);
+  }
+  .pill.inf { color: var(--warn); border-color: rgba(217,164,65,.45); }
+  .pill.conf { color: var(--ok); border-color: rgba(63,178,127,.45); }
+  .mem-text { font-size: 12.8px; }
+  .mem-inferred-text { color: var(--muted); }
+  .mem-quote { border-left: 2px solid var(--border); padding-left: 7px; color: var(--muted); font-size: 11.5px; }
+  .mem-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .downgrade-row {
+    display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 12px 14px;
+    border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--faint);
+  }
+
+  /* ── 设置 ── */
+  .settings { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .settings .card { padding: 11px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .settings .card h4 { margin: 0; font-size: 12px; font-weight: 650; }
+  .budget { display: flex; flex-direction: column; gap: 4px; }
+  .bar { height: 7px; border-radius: 4px; background: var(--bg-3); overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar i:nth-child(2) { background: #4f93d6; }
+  .bar i:nth-child(3) { background: var(--ok); }
+  .bar-legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 10.5px; color: var(--faint); }
+  .bar-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .swatch { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+  .num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+  /* ── 提示条 ── */
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(8px);
+    padding: 8px 14px; border-radius: 999px; background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--text); font-size: 12.5px; box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+    transition: opacity .18s, transform .18s; max-width: min(560px, 92vw); text-align: center; z-index: 20;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .footer-note {
+    flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+    border-top: 1px solid var(--border-soft); font-size: 10.5px; color: var(--faint); background: var(--bg);
+  }
+  .footer-note a { color: var(--muted); text-decoration: none; border-bottom: 1px dashed var(--border); }
+  .footer-note a:hover { color: var(--text); }
+
+  @media (max-width: 1180px) {
+    .collect { grid-template-columns: 156px minmax(0, 1fr); }
+    .collect-detail { display: none; }
+    .collect-detail.open {
+      display: block; position: fixed; z-index: 8; right: 0; top: 52px; bottom: 0;
+      width: min(420px, 94vw); background: var(--bg); box-shadow: -14px 0 34px rgba(0,0,0,.28);
+    }
+    .sidebar { width: min(390px, 42vw); }
+  }
+  @media (max-width: 900px) {
+    .body { flex-direction: column; }
+    .sidebar { width: 100%; height: 46%; border-left: 0; border-top: 1px solid var(--border); }
+    .workspace { min-height: 54%; }
+    .board { grid-template-columns: 1fr; }
+    .topbar { height: auto; padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+    .top-actions { width: 100%; justify-content: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important; scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 4v10l-7 4-7-4V7z"/><path d="M12 12l7-4M12 12v9M12 12L5 8"/></svg>
+      Ark <small>v2 · 交互演示</small>
+    </span>
+    <span class="conn" title="http://127.0.0.1:8650 · 单进程 ark serve"><span class="dot"></span>ark serve 已连接</span>
+    <span class="spacer"></span>
+    <div class="top-actions" id="scenarioBar" role="group" aria-label="预设剧本"></div>
+    <button class="btn btn-ghost btn-xs" data-act="reset" title="回到初始预设状态">重置</button>
+    <button class="icon-btn" data-act="theme" id="themeBtn" title="切换深浅色" aria-label="切换深浅色">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+    </button>
+  </header>
+
+  <div class="body">
+    <main class="workspace">
+      <nav class="tabs" id="wsTabs" role="tablist" aria-label="主工作区"></nav>
+      <section class="pane" id="wsPane" aria-live="polite"></section>
+    </main>
+    <aside class="sidebar">
+      <nav class="tabs" id="sideTabs" role="tablist" aria-label="Ark 边栏"></nav>
+      <section class="pane" id="sidePane" aria-live="polite"></section>
+    </aside>
+  </div>
+
+  <footer class="footer-note">
+    <span>零后端演示 · 状态全部由同一台纯函数状态机算出，刷新即回初始态</span>
+    <span class="spacer"></span>
+    <a href="/projects/ark-workbench">← 回到 Ark 知识工作台</a>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+/* ══════════════════════════════════════════════════════════════════════════
+   Ark v2 状态机 —— 本段与 src/lib/demo/ark/machine.js 逐字节相同。
+   页面是 public/ 下的静态资源，运行时无法 import TypeScript 模块，所以
+   权威实现放在那份纯 JS 里（它有 TypeScript 类型外壳与单测覆盖），这里
+   原样内联。src/lib/demo/ark/mirror.test.ts 会在两份内容出现一个字节差异
+   时失败，因此「页面上跑的规则」与「被测的规则」是同一条规则。
+   修改 machine.js 后运行：bun scripts/sync-ark-demo.mjs
+   ══════════════════════════════════════════════════════════════════════════ */
+/* __ARK_MACHINE_BEGIN__ */
+/**
+ * Ark v2 interactive workbench — the one implementation of the state machine.
+ *
+ * This file is plain JavaScript on purpose: the demo page at
+ * `public/projects/ark-workbench/demo/index.html` inlines it verbatim (it is a
+ * static asset and cannot import a module at runtime), and
+ * `src/lib/demo/ark/mirror.test.ts` fails if the two copies ever differ by a
+ * single byte. `src/lib/demo/ark/state.ts` adds the TypeScript types on top.
+ *
+ * Design rules encoded here (Ark `docs/design.md` v0.8):
+ *
+ * 1. Anything Git can undo is written without a dialog. Vault writes (organise a
+ *    note, Collect intake, task board edits) apply immediately and append exactly
+ *    one snapshot carrying its source tag. `undoSnapshot` puts the exact previous
+ *    bytes back and marks that snapshot reverted; the history list itself is
+ *    never rewritten.
+ * 2. External, irreversible writes stop at a confirmation. Mail via Tencent
+ *    AgentMail always becomes a `pendingAction` with `status: 'pending'`; only an
+ *    explicit approve sends it, and a reject backfills the refusal with no
+ *    external effect.
+ * 3. Inferred memory never enters the 2k resident layer and always renders with
+ *    `[推测，未确认]`. Confirming records the `via` channel; downgrading by
+ *    channel bulk-reverts only that host's confirmed entries.
+ * 4. A cross-host Live State save checks `baseRev === thread.rev`. A stale
+ *    `baseRev` never overwrites: it lands in `thread.pendingConflicts`.
+ *
+ * Everything is pure and deterministic (no Date.now, no Math.random — a
+ * monotonic `clock` instead), so a scenario replays to an identical state.
+ */
+
+export const MEMORY_INFERRED_PREFIX = '[推测，未确认]'
+
+/** A rev read in an earlier session: it can no longer match `thread.rev`. */
+export const STALE_BASE_REV = 'rev-4b1d7c02'
+
+/** Symbol for "the rev this host just read", resolved when the action applies. */
+export const CURRENT_REV = '@current'
+
+export const ARK_BUDGET = { resident: 2000, onDemand: 4000 }
+
+export const ARK_HOSTS = ['obsidian', 'claude-code', 'dsh', 'astrbot-qq', 'agentmail']
+
+export const ARK_WORKSPACE_TABS = ['note', 'collect', 'tasks', 'channels']
+export const ARK_SIDEBAR_TABS = ['chat', 'history', 'memory', 'settings']
+
+/** The action names the reducer understands; the tests pin this list. */
+export const ARK_ACTION_TYPES = [
+  'set-workspace-tab',
+  'set-sidebar-tab',
+  'organize-note',
+  'undo-latest',
+  'undo-snapshot',
+  'collect-submit',
+  'collect-finish',
+  'collect-retry',
+  'move-task',
+  'run-channel-action',
+  'request-agentmail-send',
+  'resolve-pending-action',
+  'confirm-memory',
+  'downgrade-by-channel',
+  'save-thread',
+  'run-scenario',
+  'reset'
+]
+
+/**
+ * The five channels with the evidence grade each one actually has. The two
+ * external channels read as standard MCP extensions and never as accepted on
+ * real hardware: one mismatched word here turns an honest page into one that
+ * folds under a follow-up question.
+ */
+export const ARK_CHANNELS = [
+  {
+    host: 'obsidian',
+    name: 'Obsidian 面板',
+    grade: 'verified',
+    gradeLabel: '已完成实机验收',
+    detail:
+      '2026-11-16 · 8 步人工验收：整理笔记、一轮对话一个快照、确认与驳回推断记忆、外部动作确认卡拒绝后不执行。',
+    actions: [
+      { id: 'organize-note', label: '整理当前笔记' },
+      { id: 'inspect-history', label: '查看快照' },
+      { id: 'save-thread', label: '保存 Live State' }
+    ]
+  },
+  {
+    host: 'claude-code',
+    name: 'Claude Code',
+    grade: 'verified',
+    gradeLabel: '已完成实机验收',
+    detail:
+      '2.1.304 + Opus 5.5 · 经 mcp-remote 桥接 stdio 连 /mcp，2026-11-01 四步通过：提问、引用、写笔记、撤销。',
+    actions: [
+      { id: 'resume-thread', label: '恢复线程' },
+      { id: 'list-tasks', label: '查任务' },
+      { id: 'save-thread', label: '保存 Live State' }
+    ]
+  },
+  {
+    host: 'dsh',
+    name: 'DSH',
+    grade: 'verified',
+    gradeLabel: '已完成实机验收',
+    detail: 'DSH 0.1.0-rc.7 · 同一个 /mcp，2026-11-01 同样四步通过；模型 mx/deepseek-flash。',
+    actions: [
+      { id: 'resume-thread', label: '恢复线程' },
+      { id: 'list-tasks', label: '查任务' },
+      { id: 'recall-memory', label: '召回记忆' }
+    ]
+  },
+  {
+    host: 'astrbot-qq',
+    name: '手机 QQ（经 AstrBot）',
+    grade: 'mcp-extension',
+    gradeLabel: '标准 MCP 协议扩展接入',
+    detail:
+      'AstrBot 用 streamable_http 连 Core 的 /mcp，headers 带 Authorization: Bearer；人格提示词由 ark-protocol、ask、summarize 三份 SKILL.md 正文拼接。示例对照 AstrBot v4.29.4 源码核对，尚未在真实 AstrBot 上运行。',
+    actions: [
+      { id: 'collect-submit', label: '投递链接' },
+      { id: 'list-tasks', label: '查任务' },
+      { id: 'resume-thread', label: '恢复线程' }
+    ]
+  },
+  {
+    host: 'agentmail',
+    name: '腾讯 AgentMail',
+    grade: 'mcp-extension',
+    gradeLabel: '标准 MCP 协议扩展接入',
+    detail:
+      '邮件只有一条原则：优先用现成的 IMAP/SMTP MCP server。腾讯 AgentMail 属这条路径，仓库内没有专门接入记录。收信只返回素材；发信是外部写动作，执行前必须确认，拒绝也回填给模型。',
+    actions: [
+      { id: 'request-agentmail-send', label: '外发邮件' },
+      { id: 'collect-submit', label: '收信入库' }
+    ]
+  }
+]
+
+export const ARK_SCENARIO_META = [
+  {
+    id: 'cross-channel-collect-mail',
+    label: '跨端采集到外发拦截',
+    summary: '手机 QQ 投递视频链接 → Collect 入库 → 对话汇总 → 外发停在确认卡',
+    steps: 3
+  },
+  {
+    id: 'vault-write-and-undo',
+    label: '免审批写与单步回滚',
+    summary: '整理笔记免弹窗改写原文 → 历史里看着色 diff → 一键撤销复原',
+    steps: 3
+  },
+  {
+    id: 'memory-and-concurrency',
+    label: '记忆确认与并发保护',
+    summary: '确认一条推断记忆升入常驻层 → 过期 base_rev 落入待合并',
+    steps: 5
+  }
+]
+
+/* ── deterministic helpers ─────────────────────────────────────────────── */
+
+function fnv1a(input) {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
+/** `rev` is a content hash, exactly like Ark's Live State rev. */
+function revOf(content) {
+  return `rev-${fnv1a(content)}`
+}
+
+/** CJK counts 1 token per character, everything else 1 token per 4 characters. */
+export function estimatedTokens(text) {
+  let tokens = 0
+  for (const char of text) tokens += /[\u3000-\u9fff\uff00-\uffef]/.test(char) ? 1 : 0.25
+  return Math.ceil(tokens)
+}
+
+export function messageTime(at) {
+  const minutes = 9 * 60 + at * 3
+  const hh = String(Math.floor(minutes / 60) % 24).padStart(2, '0')
+  const mm = String(minutes % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+/** A line diff good enough to colour: unchanged lines kept as context. */
+export function diffLines(before, after) {
+  const left = before.split('\n')
+  const right = after.split('\n')
+  const out = []
+  const rows = Math.max(left.length, right.length)
+  for (let i = 0; i < rows; i += 1) {
+    const a = left[i]
+    const b = right[i]
+    if (a === b) {
+      if (a !== undefined) out.push(` ${a}`)
+      continue
+    }
+    if (a !== undefined) out.push(`- ${a}`)
+    if (b !== undefined) out.push(`+ ${b}`)
+  }
+  return out.join('\n')
+}
+
+function taskLines(tasks) {
+  return tasks.map((task) => `${task.status === 'done' ? '[x]' : '[ ]'} ${task.title}`).join('\n')
+}
+
+function collectLines(items) {
+  return items.map((item) => `${item.status} ${item.category || '未分类'} ${item.title}`).join('\n')
+}
+
+function commitId(clock, kind) {
+  return fnv1a(`${kind}:${clock}:${kind}`)
+}
+
+/* ── seed data ─────────────────────────────────────────────────────────── */
+
+const NOTE_PATH = '笔记/三体.md'
+
+const NOTE_INITIAL = `---
+title: 三体
+tags: [知识管理]
+updated: 2026-11-23
+---
+
+刘慈欣的长篇科幻。黑暗森林法则：宇宙就是一座黑暗森林，每个文明都是带枪的猎人。
+
+## 相关阅读
+
+- [[方舟计划]]
+`
+
+const NOTE_ORGANISED = `---
+title: 三体
+tags: [知识管理, 工作流]
+updated: 2026-11-23
+---
+
+刘慈欣的长篇科幻。黑暗森林法则：宇宙就是一座黑暗森林，每个文明都是带枪的猎人。
+
+## 相关阅读
+
+- [[方舟计划]]
+- [[黑暗森林与最小暴露面]]
+`
+
+const THREAD_SUMMARY = '先把双区八个面板摆出来，再补三个预设剧本；写入一律免审批，靠快照兜底。'
+
+const SEED_COLLECT = [
+  {
+    id: 'c1',
+    kind: 'video',
+    title: '如何构建一个真正可靠的个人知识库',
+    url: 'https://www.bilibili.com/video/BV1Axxxxxxx?p=1',
+    origin: 'bilibili.com · 林间实验室',
+    sourceHost: 'obsidian',
+    status: 'done',
+    category: '技术',
+    tags: ['知识管理', '工作流'],
+    addedAt: '今天 10:24',
+    summary:
+      '作者从长期使用经验出发，讨论知识库如何从「堆积资料」转向支持检索、复用和行动的个人系统。',
+    points: [
+      '先明确知识库服务的具体工作流，再决定目录和标签结构。',
+      '捕获成本越低越好，但需要定期回顾来防止信息沉没。',
+      '让原始来源、个人判断和后续行动保持可追溯的联系。'
+    ],
+    notePath: '笔记/collect/个人知识库.md'
+  },
+  {
+    id: 'c2',
+    kind: 'web',
+    title: '理解长文阅读中的信息筛选与记忆',
+    url: 'https://mp.weixin.qq.com/s/reading-notes',
+    origin: 'mp.weixin.qq.com · 少数派',
+    sourceHost: 'obsidian',
+    status: 'failed',
+    category: '阅读',
+    tags: ['阅读方法', '记忆'],
+    addedAt: '今天 09:12',
+    error: '页面要求登录，当前无法提取正文。原链接已保留，可以稍后重试。'
+  },
+  {
+    id: 'c3',
+    kind: 'video',
+    title: '从用户研究到产品决策：一套轻量方法',
+    url: 'https://www.bilibili.com/video/BV1Bxxxxxxx?p=2',
+    origin: 'bilibili.com · 产品沉思录',
+    sourceHost: 'astrbot-qq',
+    status: 'processing',
+    category: '产品',
+    tags: ['用户研究'],
+    addedAt: '昨天 21:08',
+    progress: '内容已提取，正在生成摘要。'
+  },
+  {
+    id: 'c4',
+    kind: 'web',
+    title: 'A practical guide to local-first software',
+    url: 'https://martin.kleppmann.com/2020/10/07/local-first.html',
+    origin: 'martin.kleppmann.com',
+    sourceHost: 'obsidian',
+    status: 'processing',
+    category: '技术',
+    tags: ['Local-first', '软件设计'],
+    addedAt: '昨天 18:07',
+    progress: '已取到正文，等待抽取要点。'
+  }
+]
+
+const SEED_TASKS = [
+  {
+    id: 't1',
+    title: '整理本周采集的三条视频',
+    status: 'todo',
+    dueToday: true,
+    source: 'plugin:collect'
+  },
+  {
+    id: 't2',
+    title: '给多端同步文档补 AstrBot 配置片段',
+    status: 'doing',
+    dueToday: true,
+    source: 'ark(ark-agent)'
+  },
+  {
+    id: 't3',
+    title: '重跑一次 evals/gate.py 门禁',
+    status: 'todo',
+    dueToday: false,
+    source: 'ark(ark-agent)'
+  },
+  {
+    id: 't4',
+    title: '把记忆面板的降级按钮做出来',
+    status: 'done',
+    dueToday: false,
+    source: 'ark(obsidian)'
+  },
+  {
+    id: 't5',
+    title: '确认 AgentMail 的权限清单',
+    status: 'doing',
+    dueToday: false,
+    source: 'ark(agentmail)'
+  }
+]
+
+const SEED_MEMORIES = [
+  {
+    id: 'm1',
+    text: '写文档时偏好先给结论，再展开细节。',
+    status: 'inferred',
+    via: 'claude-code',
+    quote: '「以后写文档都先给结论，再展开细节。」',
+    kind: '偏好',
+    at: '2026-11-16'
+  },
+  {
+    id: 'm2',
+    text: '笔记一律用中文书写，术语保留英文原词，不做中英混排。',
+    status: 'confirmed',
+    via: 'obsidian',
+    quote: '「笔记就用中文写，别中英混排。」',
+    kind: '事实',
+    at: '2026-11-16'
+  },
+  {
+    id: 'm3',
+    text: '长文多写在深夜。',
+    status: 'confirmed',
+    via: 'dsh',
+    quote: '「夜里两点那篇是我写的，白天写不动。」',
+    kind: '推断',
+    at: '2026-11-12'
+  }
+]
+
+const SEED_CHAT = [
+  {
+    id: 'msg-0',
+    role: 'user',
+    text: '把《三体》这篇笔记整理一下，补上相关链接和标签。',
+    at: 0
+  },
+  {
+    id: 'msg-1',
+    role: 'agent',
+    text: '整理好了：frontmatter 补了标签，正文末尾补了一条双链。原文措辞没动，要撤销说一声。',
+    at: 1,
+    trace: [
+      { tool: 'ark_load_skill', arg: 'organize', result: '已加载整理技能', ms: 12 },
+      { tool: 'read', arg: '笔记/三体.md', result: '读到 4 段正文与 1 组 frontmatter', ms: 8 },
+      { tool: 'search', arg: '三体', result: '3 条：笔记/方舟计划.md、收件箱.md、笔记/三体.md', ms: 31 },
+      { tool: 'patch', arg: '笔记/三体.md', result: '在「相关阅读」追加 [[方舟计划]]', ms: 11 }
+    ]
+  }
+]
+
+export function createInitialState() {
+  return {
+    scenario: null,
+    workspaceTab: 'note',
+    sidebarTab: 'chat',
+    note: { path: NOTE_PATH, content: NOTE_INITIAL, rev: revOf(NOTE_INITIAL) },
+    collectItems: SEED_COLLECT.map((item) => ({ ...item })),
+    tasks: SEED_TASKS.map((task) => ({ ...task })),
+    memories: SEED_MEMORIES.map((memory) => ({ ...memory })),
+    thread: {
+      slug: 'ark-v2-demo',
+      rev: revOf(THREAD_SUMMARY),
+      summary: THREAD_SUMMARY,
+      updatedBy: 'obsidian',
+      pendingConflicts: []
+    },
+    snapshots: [],
+    pendingAction: null,
+    chat: SEED_CHAT.map((message) => ({ ...message })),
+    mail: { sentCount: 0, refusal: null },
+    clock: 2
+  }
+}
+
+/* ── derived views (pure; shared by the tests and the page) ────────────── */
+
+export function memoryDisplay(memory) {
+  return memory.status === 'inferred' ? `${MEMORY_INFERRED_PREFIX}${memory.text}` : memory.text
+}
+
+/**
+ * The 2k resident layer: confirmed preferences + the Live State summary + the
+ * enabled plugin's `context.md`. Inferred entries are structurally excluded —
+ * not filtered out by a budget check that might later pass.
+ */
+export function residentPreview(state) {
+  const confirmed = state.memories.filter((memory) => memory.status === 'confirmed')
+  const parts = [
+    { label: '已确认偏好', tokens: confirmed.reduce((sum, m) => sum + estimatedTokens(m.text), 0) },
+    { label: 'Live State 摘要', tokens: estimatedTokens(state.thread.summary) },
+    { label: '插件 context.md（今日到期）', tokens: estimatedTokens(taskContextPreview(state)) }
+  ]
+  return {
+    ids: confirmed.map((memory) => memory.id),
+    tokens: parts.reduce((sum, part) => sum + part.tokens, 0),
+    limit: ARK_BUDGET.resident,
+    parts
+  }
+}
+
+/** What the tasks plugin injects: only unfinished work that is due today. */
+export function taskContextPreview(state) {
+  const due = state.tasks.filter((task) => task.dueToday && task.status !== 'done')
+  const lines = due.length
+    ? due.map((task) => `- [ ] ${task.title}（今日到期 · ${task.status}）`)
+    : ['- 今天没有未完成且到期的任务']
+  return [`# context.md · ${state.thread.slug}`, '## 今日到期', ...lines].join('\n')
+}
+
+/** Category counts for the Collect sidebar. */
+export function collectCategories(state) {
+  const counts = new Map()
+  for (const item of state.collectItems) {
+    const key = item.category || '未分类'
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  return [...counts.entries()].map(([name, count]) => ({ name, count }))
+}
+
+export function channelOf(host) {
+  return ARK_CHANNELS.find((channel) => channel.host === host)
+}
+
+/* ── reducer internals ─────────────────────────────────────────────────── */
+
+function withSnapshot(state, input, patch) {
+  const clock = state.clock + 1
+  const snapshot = {
+    commit: commitId(clock, input.kind),
+    kind: input.kind,
+    source: input.source,
+    message: input.message,
+    diff: input.diff,
+    reverted: false,
+    at: clock,
+    previousNoteContent: input.previousNoteContent,
+    previousNoteRev: input.previousNoteRev,
+    previousTasks: input.previousTasks,
+    previousCollectItems: input.previousCollectItems
+  }
+  return { ...state, ...patch, clock, snapshots: [...state.snapshots, snapshot] }
+}
+
+function say(state, role, text, trace) {
+  const clock = state.clock + 1
+  return {
+    ...state,
+    clock,
+    chat: [...state.chat, { id: `msg-${clock}`, role, text, at: clock, trace }]
+  }
+}
+
+function sourceOfCollect(item) {
+  return item.sourceHost === 'astrbot-qq' ? 'ark(astrbot)' : 'plugin:collect'
+}
+
+function collectSummary(item) {
+  return item.kind === 'video'
+    ? `这条视频把「${item.category || '未分类'}」的实操拆成三步，重点在把捕获成本压到一次粘贴。`
+    : `这篇文章从「${item.category || '未分类'}」角度给出可操作的清单，结论先于论据。`
+}
+
+function collectPoints(item) {
+  return item.kind === 'video'
+    ? [
+        '先把入口做窄，只留一个粘贴框。',
+        '入库必须带来源锚点，否则三个月后没人敢引用。',
+        '摘要只写能行动的部分。'
+      ]
+    : ['先判断这条资料服务于哪个工作流。', '把结论和引用证据分开记。', '失败时要保留原链接，不能编摘要。']
+}
+
+/** Undo one snapshot by commit. Only the newest un-reverted snapshot can go. */
+export function undoSnapshot(state, commit) {
+  const newest = [...state.snapshots].reverse().find((snapshot) => !snapshot.reverted)
+  if (!newest || newest.commit !== commit) return state
+
+  const snapshots = state.snapshots.map((snapshot) =>
+    snapshot.commit === commit ? { ...snapshot, reverted: true } : snapshot
+  )
+
+  if (newest.kind === 'note' && newest.previousNoteContent !== undefined) {
+    const note = {
+      ...state.note,
+      content: newest.previousNoteContent,
+      rev: newest.previousNoteRev || revOf(newest.previousNoteContent)
+    }
+    return say({ ...state, snapshots, note }, 'agent', `已撤销 ${commit}，笔记精确恢复到写入前的字节。`)
+  }
+
+  if (newest.kind === 'tasks' && newest.previousTasks) {
+    return say(
+      { ...state, snapshots, tasks: newest.previousTasks.map((task) => ({ ...task })) },
+      'agent',
+      `已撤销 ${commit}，任务看板回到写入前的状态。`
+    )
+  }
+
+  if (newest.kind === 'collect' && newest.previousCollectItems) {
+    return say(
+      { ...state, snapshots, collectItems: newest.previousCollectItems.map((item) => ({ ...item })) },
+      'agent',
+      `已撤销 ${commit}，入库记录与摘要笔记一并撤回，来源链接保留。`
+    )
+  }
+
+  return { ...state, snapshots }
+}
+
+/* ── dispatch ──────────────────────────────────────────────────────────── */
+
+export function dispatch(state, action) {
+  switch (action.type) {
+    case 'set-workspace-tab':
+      return state.workspaceTab === action.tab ? state : { ...state, workspaceTab: action.tab }
+
+    case 'set-sidebar-tab':
+      return state.sidebarTab === action.tab ? state : { ...state, sidebarTab: action.tab }
+
+    case 'organize-note': {
+      if (state.note.content === NOTE_ORGANISED) return state
+      return say(
+        withSnapshot(
+          state,
+          {
+            kind: 'note',
+            source: 'ark(ark-agent)',
+            message: `ark(ark-agent): organize ${state.note.path}`,
+            diff: diffLines(state.note.content, NOTE_ORGANISED),
+            previousNoteContent: state.note.content,
+            previousNoteRev: state.note.rev
+          },
+          {
+            workspaceTab: 'note',
+            note: { ...state.note, content: NOTE_ORGANISED, rev: revOf(NOTE_ORGANISED) }
+          }
+        ),
+        'agent',
+        '整理完成：frontmatter 补了工作流标签，末尾加了一条双链。没有弹确认框 —— 这件事 Git 撤得回来。'
+      )
+    }
+
+    case 'undo-latest': {
+      const newest = [...state.snapshots].reverse().find((snapshot) => !snapshot.reverted)
+      return newest ? undoSnapshot(state, newest.commit) : state
+    }
+
+    case 'undo-snapshot':
+      return undoSnapshot(state, action.commit)
+
+    case 'collect-submit': {
+      const url = action.url.trim()
+      if (!url) return state
+      const isVideo = /bilibili\.com/i.test(url)
+      const id = `c${state.collectItems.length + 1}`
+      const item = {
+        id,
+        kind: isVideo ? 'video' : 'web',
+        title: isVideo
+          ? '新采集的 B 站视频（等待抽取）'
+          : `新采集的网页（${url.replace(/^https?:\/\//, '').slice(0, 28)}）`,
+        url,
+        origin: url.replace(/^https?:\/\//, '').split('/')[0] || url,
+        sourceHost: action.host,
+        status: 'processing',
+        category: '',
+        tags: ['待处理'],
+        addedAt: '刚刚',
+        progress: '链接已进 queue，采集扩展正在取素材。'
+      }
+      return say(
+        { ...state, workspaceTab: 'collect', collectItems: [...state.collectItems, item] },
+        'user',
+        action.host === 'astrbot-qq'
+          ? `手机 QQ（AstrBot）投递了一个链接：${url}`
+          : `投递了一个链接：${url}`
+      )
+    }
+
+    case 'collect-finish': {
+      const target = state.collectItems.find((item) => item.id === action.id)
+      if (!target || target.status === 'done') return state
+      const finished = {
+        ...target,
+        status: 'done',
+        summary: collectSummary(target),
+        points: collectPoints(target),
+        progress: undefined,
+        error: undefined,
+        notePath: `笔记/collect/${target.id}-${target.kind === 'video' ? '视频摘要' : '文章摘要'}.md`
+      }
+      const items = state.collectItems.map((item) => (item.id === action.id ? finished : item))
+      return say(
+        withSnapshot(
+          state,
+          {
+            kind: 'collect',
+            source: sourceOfCollect(target),
+            message: `${sourceOfCollect(target)}: collect ${finished.notePath}`,
+            diff: diffLines(collectLines(state.collectItems), collectLines(items)),
+            previousCollectItems: state.collectItems.map((item) => ({ ...item }))
+          },
+          { collectItems: items }
+        ),
+        'agent',
+        `入库完成：${finished.notePath}。摘要、要点、来源锚点都在，随时可检索。`,
+        [
+          { tool: 'collect_fetch', arg: finished.origin, result: '取到正文与元数据', ms: 640 },
+          { tool: 'collect_extract', arg: '摘要 + 要点', result: '生成 1 段摘要、3 条要点', ms: 1180 },
+          { tool: 'write', arg: finished.notePath, result: '写入 Vault，附带来源锚点', ms: 14 }
+        ]
+      )
+    }
+
+    case 'collect-retry': {
+      const target = state.collectItems.find((item) => item.id === action.id)
+      if (!target || target.status === 'processing') return state
+      const items = state.collectItems.map((item) =>
+        item.id === action.id
+          ? {
+              ...item,
+              status: 'processing',
+              error: undefined,
+              progress: '重试任务已入队，等待采集扩展。'
+            }
+          : item
+      )
+      return say(
+        { ...state, collectItems: items },
+        'agent',
+        `已重试 ${action.id}：任务入队，没有生成任何摘要。`
+      )
+    }
+
+    case 'move-task': {
+      const target = state.tasks.find((task) => task.id === action.id)
+      if (!target || target.status === action.status) return state
+      const tasks = state.tasks.map((task) =>
+        task.id === action.id ? { ...task, status: action.status } : task
+      )
+      const label = { todo: '待办', doing: '进行中', done: '已完成' }[action.status]
+      return say(
+        withSnapshot(
+          state,
+          {
+            kind: 'tasks',
+            source: 'ark(ark-agent)',
+            message: `ark(ark-agent): tasks 将 ${target.id} 移到 ${action.status}`,
+            diff: diffLines(taskLines(state.tasks), taskLines(tasks)),
+            previousTasks: state.tasks.map((task) => ({ ...task }))
+          },
+          { tasks }
+        ),
+        'agent',
+        `任务「${target.title}」已移到${label}。看板变更同样进快照，不用先问。`
+      )
+    }
+
+    case 'run-channel-action': {
+      const channel = channelOf(action.host)
+      if (!channel) return state
+
+      switch (action.action) {
+        case 'organize-note':
+          return dispatch(state, { type: 'organize-note' })
+
+        case 'inspect-history':
+          return { ...state, sidebarTab: 'history' }
+
+        case 'request-agentmail-send':
+          return dispatch(state, { type: 'request-agentmail-send' })
+
+        case 'collect-submit':
+          return dispatch(state, {
+            type: 'collect-submit',
+            url: 'https://www.bilibili.com/video/BV1GJ411x7h7',
+            host: action.host
+          })
+
+        case 'list-tasks': {
+          const open = state.tasks.filter((task) => task.status !== 'done')
+          return say(
+            { ...state, sidebarTab: 'chat' },
+            'agent',
+            `${channel.name} 查到 ${open.length} 个未完成任务：${open
+              .map((task) => task.title)
+              .join('；')}`,
+            [
+              {
+                tool: 'tasks_list_tasks',
+                arg: channel.host,
+                result: `返回 ${state.tasks.length} 条`,
+                ms: 9
+              },
+              {
+                tool: 'tasks_today',
+                arg: '今日到期',
+                result: `返回 ${
+                  state.tasks.filter((task) => task.dueToday && task.status !== 'done').length
+                } 条`,
+                ms: 6
+              }
+            ]
+          )
+        }
+
+        case 'resume-thread':
+          return say(
+            { ...state, sidebarTab: 'chat' },
+            'agent',
+            `${channel.name} 恢复线程 ${state.thread.slug}（${state.thread.rev}）：${state.thread.summary}`,
+            [
+              {
+                tool: 'context_resume',
+                arg: state.thread.slug,
+                result: `rev ${state.thread.rev}`,
+                ms: 12
+              }
+            ]
+          )
+
+        case 'recall-memory': {
+          const inferred = state.memories.filter((memory) => memory.status === 'inferred')
+          return say(
+            { ...state, sidebarTab: 'chat' },
+            'agent',
+            `${channel.name} 召回 ${state.memories.length} 条记忆，其中 ${inferred.length} 条标了${MEMORY_INFERRED_PREFIX}，不计入常驻层。`,
+            [
+              {
+                tool: 'memory_search_memory',
+                arg: '全部',
+                result: `${state.memories.length} 条`,
+                ms: 7
+              }
+            ]
+          )
+        }
+
+        case 'save-thread':
+          return dispatch(state, {
+            type: 'save-thread',
+            host: action.host,
+            baseRev: CURRENT_REV,
+            summary: state.thread.summary
+          })
+
+        default:
+          return state
+      }
+    }
+
+    case 'request-agentmail-send': {
+      if (state.pendingAction && state.pendingAction.status === 'pending') return state
+      const clock = state.clock + 1
+      const pending = {
+        id: `pa-${clock}`,
+        channel: 'agentmail',
+        tool: 'agentmail_send',
+        summary: '把本轮对话的三条结论外发到 demo@example.com（主题：Ark v2 采集链路小结）',
+        payloadPreview: {
+          to: 'demo@example.com',
+          subject: 'Ark v2 采集链路小结',
+          body: `${state.thread.summary}\n- Collect 已完成 ${
+            state.collectItems.filter((item) => item.status === 'done').length
+          } 条入库`,
+          via: '标准 MCP 扩展接入（IMAP/SMTP）'
+        },
+        status: 'pending'
+      }
+      return say(
+        { ...state, pendingAction: pending, sidebarTab: 'chat', clock },
+        'agent',
+        '整理好了。发给外部邮箱是撤不回来的动作，所以先挂一张确认卡：批准才发，拒绝我把结果回填给模型。'
+      )
+    }
+
+    case 'resolve-pending-action': {
+      const pending = state.pendingAction
+      if (!pending || pending.status !== 'pending') return state
+
+      if (action.decision === 'approve') {
+        return say(
+          {
+            ...state,
+            pendingAction: { ...pending, status: 'approved' },
+            mail: { sentCount: state.mail.sentCount + 1, refusal: state.mail.refusal }
+          },
+          'agent',
+          `已批准，邮件已通过 AgentMail 发出（第 ${
+            state.mail.sentCount + 1
+          } 封）。这次没有 Vault 写入，所以不产生快照。`
+        )
+      }
+
+      return say(
+        {
+          ...state,
+          pendingAction: { ...pending, status: 'rejected' },
+          mail: {
+            sentCount: state.mail.sentCount,
+            refusal: '用户拒绝外发，邮件未发送；拒绝结果已回填给模型。'
+          }
+        },
+        'agent',
+        '已拒绝：邮件未发送，外部没有任何副作用。拒绝结果回填给模型，这轮到此结束。'
+      )
+    }
+
+    case 'confirm-memory': {
+      const target = state.memories.find((memory) => memory.id === action.id)
+      if (!target || target.status === 'confirmed') return state
+      const via = action.host || target.via
+      const memories = state.memories.map((memory) =>
+        memory.id === action.id ? { ...memory, status: 'confirmed', via } : memory
+      )
+      const clock = state.clock + 1
+      return {
+        ...state,
+        memories,
+        clock,
+        chat: [
+          ...state.chat,
+          {
+            id: `msg-${clock}`,
+            role: 'agent',
+            text: `记忆 ${action.id} 已确认，via=${via}。它从这轮起进入 2k 常驻层。`,
+            at: clock
+          }
+        ]
+      }
+    }
+
+    case 'downgrade-by-channel': {
+      const affected = state.memories.filter(
+        (memory) => memory.status === 'confirmed' && memory.via === action.host
+      )
+      if (!affected.length) return state
+      const memories = state.memories.map((memory) =>
+        affected.some((entry) => entry.id === memory.id)
+          ? { ...memory, status: 'inferred' }
+          : memory
+      )
+      const clock = state.clock + 1
+      return {
+        ...state,
+        memories,
+        clock,
+        chat: [
+          ...state.chat,
+          {
+            id: `msg-${clock}`,
+            role: 'agent',
+            text: `已按通道降级 ${affected.length} 条（via=${action.host}）：${affected
+              .map((memory) => memory.id)
+              .join('、')}。其他通道确认的不受影响。`,
+            at: clock
+          }
+        ]
+      }
+    }
+
+    case 'save-thread': {
+      const baseRev = action.baseRev === CURRENT_REV ? state.thread.rev : action.baseRev
+      if (baseRev !== state.thread.rev) {
+        const clock = state.clock + 1
+        const conflict = {
+          id: `conflict-${clock}`,
+          host: action.host,
+          baseRev,
+          incomingSummary: action.summary,
+          incomingAt: clock
+        }
+        return {
+          ...state,
+          clock,
+          thread: { ...state.thread, pendingConflicts: [...state.thread.pendingConflicts, conflict] },
+          chat: [
+            ...state.chat,
+            {
+              id: `msg-${clock}`,
+              role: 'system',
+              text: `base_rev ${baseRev} 已过期（当前 ${state.thread.rev}）。${action.host} 的这次保存没有覆盖线程，落进 ark/threads/${state.thread.slug}.pending/ 待合并。`,
+              at: clock
+            }
+          ]
+        }
+      }
+
+      const clock = state.clock + 1
+      const rev = `rev-${fnv1a(
+        `${state.thread.slug}|${action.summary}|${action.host}|${state.thread.rev}`
+      )}`
+      return {
+        ...state,
+        clock,
+        thread: { ...state.thread, rev, summary: action.summary, updatedBy: action.host },
+        chat: [
+          ...state.chat,
+          {
+            id: `msg-${clock}`,
+            role: 'agent',
+            text: `Live State 已由 ${action.host} 保存，${state.thread.rev} → ${rev}。`,
+            at: clock
+          }
+        ]
+      }
+    }
+
+    case 'run-scenario':
+      return runScenario(action.scenario)
+
+    case 'reset':
+      return createInitialState()
+
+    default:
+      return state
+  }
+}
+
+/* ── preset scenarios ──────────────────────────────────────────────────── */
+
+/**
+ * Each scenario is a short click list, replayed from a fresh state. Deriving the
+ * end state from the same actions the buttons fire is what makes switching and
+ * reset idempotent: the run has no memory of the previous run.
+ */
+export function scenarioActions(scenario) {
+  switch (scenario) {
+    case 'cross-channel-collect-mail':
+      return [
+        {
+          type: 'collect-submit',
+          url: 'https://www.bilibili.com/video/BV1GJ411x7h7',
+          host: 'astrbot-qq'
+        },
+        { type: 'collect-finish', id: 'c5' },
+        { type: 'request-agentmail-send' }
+      ]
+
+    case 'vault-write-and-undo':
+      return [
+        { type: 'organize-note' },
+        { type: 'set-sidebar-tab', tab: 'history' },
+        { type: 'undo-latest' }
+      ]
+
+    case 'memory-and-concurrency':
+      return [
+        { type: 'set-sidebar-tab', tab: 'memory' },
+        { type: 'confirm-memory', id: 'm1', host: 'claude-code' },
+        {
+          type: 'save-thread',
+          host: 'obsidian',
+          baseRev: CURRENT_REV,
+          summary: '桌面端接上：先把 note 与 collect 两栏做实，再谈渠道。'
+        },
+        {
+          type: 'save-thread',
+          host: 'claude-code',
+          baseRev: STALE_BASE_REV,
+          summary: '终端这边的结论：只做两栏就够。'
+        },
+        { type: 'set-workspace-tab', tab: 'channels' }
+      ]
+
+    default:
+      return []
+  }
+}
+
+export function runScenario(scenario) {
+  const start = { ...createInitialState(), scenario }
+  return scenarioActions(scenario).reduce((current, action) => dispatch(current, action), start)
+}
+/* __ARK_MACHINE_END__ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   渲染层：只做 DOM 绑定。任何状态变化都经过 dispatch，界面是状态的纯函数。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const THEME_KEY = 'ark-demo-theme'
+const $ = (sel) => document.querySelector(sel)
+const esc = (value) =>
+  String(value == null ? '' : value).replace(/[&<>"']/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])
+  )
+
+const WORKSPACE_LABELS = { note: '当前笔记', collect: 'Collect 采集库', tasks: 'Tasks 看板', channels: '多端渠道' }
+const SIDEBAR_LABELS = { chat: '对话', history: '历史', memory: '记忆', settings: '设置' }
+const STATUS_LABELS = { done: '已完成', processing: '处理中', failed: '需处理' }
+const TASK_LABELS = { todo: '待办', doing: '进行中', done: '已完成' }
+const SOURCE_CLASS = (source) =>
+  source.startsWith('ark(') ? 'agent' : source.startsWith('plugin:') ? 'plugin' : 'host'
+
+let state = createInitialState()
+let ui = {
+  view: 'list',
+  status: 'all',
+  category: 'all',
+  selected: 'c1',
+  historyFilter: 'all',
+  theme: 'dark'
+}
+
+/* ── 主题：localStorage 持久化，缺省跟随 prefers-color-scheme ── */
+function readTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch (error) {
+    /* 隐私模式下 localStorage 会抛，退回系统偏好 */
+  }
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark'
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = ui.theme
+  $('#themeBtn').title = ui.theme === 'dark' ? '切到浅色' : '切到深色'
+}
+
+function persistTheme() {
+  try {
+    localStorage.setItem(THEME_KEY, ui.theme)
+  } catch (error) {
+    /* 存不下就算了，本次会话仍然生效 */
+  }
+}
+
+let toastTimer = 0
+function toast(text) {
+  const node = $('#toast')
+  node.textContent = text
+  node.classList.add('on')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => node.classList.remove('on'), 2600)
+}
+
+/* ── 小工具 ── */
+function tabBar(labels, current, kind) {
+  return Object.entries(labels)
+    .map(([id, label]) => {
+      const badge =
+        id === 'memory'
+          ? `<span class="badge-count">${state.memories.filter((m) => m.status === 'inferred').length}</span>`
+          : id === 'history'
+            ? `<span class="badge-count">${state.snapshots.filter((s) => !s.reverted).length}</span>`
+            : ''
+      return `<button class="tab" role="tab" data-act="${kind}-tab" data-tab="${id}"
+        aria-selected="${current === id}">${esc(label)}${badge}</button>`
+    })
+    .join('')
+}
+
+function diffBlock(diff) {
+  const rows = diff
+    .split('\n')
+    .slice(0, 14)
+    .map((line) => {
+      const cls = line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : 'ctx'
+      return `<div class="${cls}">${esc(line)}</div>`
+    })
+    .join('')
+  return `<div class="diff">${rows}</div>`
+}
+
+function noteLines(content) {
+  return content
+    .split('\n')
+    .map((line, index) => {
+      const cls = /^---$/.test(line)
+        ? 'fm'
+        : /^(title|tags|updated|thread|status):/.test(line)
+          ? 'key'
+          : /^#{1,6}\s/.test(line)
+            ? 'head'
+            : /^-\s/.test(line)
+              ? 'li'
+              : ''
+      const text = esc(line).replace(/\[\[([^\]]+)\]\]/g, '<span class="wikilink">[[$1]]</span>')
+      return `<div class="ln ${cls}"><span class="ln-no">${index + 1}</span><span class="ln-txt">${text || ' '}</span></div>`
+    })
+    .join('')
+}
+
+function traceBlock(message) {
+  if (!message.trace || !message.trace.length) return ''
+  const steps = message.trace
+    .map(
+      (step) => `<li class="step">
+        <div class="step-head"><span class="step-tool">${esc(step.tool)}</span>
+          ${step.arg ? `<span class="step-arg">${esc(step.arg)}</span>` : ''}
+          <span class="step-ms">${step.ms}ms</span></div>
+        <div class="step-result">${esc(step.result)}</div>
+      </li>`
+    )
+    .join('')
+  const total = message.trace.reduce((sum, step) => sum + step.ms, 0)
+  return `<details class="trace">
+    <summary>工具调用轨迹<span class="trace-stats">${message.trace.length} 步 · ${total}ms</span></summary>
+    <div class="trace-body"><ul class="steps">${steps}</ul></div>
+  </details>`
+}
+
+function pendingCard() {
+  const pending = state.pendingAction
+  if (!pending) return ''
+  const done = pending.status !== 'pending'
+  const head =
+    pending.status === 'approved'
+      ? '✓ 已批准 · 邮件已发出'
+      : pending.status === 'rejected'
+        ? '✕ 已拒绝 · 外部没有副作用'
+        : '需要你确认 · 外部写动作'
+  const body = done
+    ? pending.status === 'approved'
+      ? 'AgentMail 已发送。这次没有写 Vault，因此不在历史里产生快照。'
+      : '邮件未发送，拒绝结果已回填给模型。这条路径到此为止。'
+    : esc(pending.summary)
+  const payload = Object.entries(pending.payloadPreview)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n')
+  return `<div class="confirm ${done ? 'done' : ''}">
+    <div class="confirm-head">${
+      done
+        ? ''
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/></svg>'
+    }${esc(head)}</div>
+    <div class="confirm-body">${body}</div>
+    ${
+      done
+        ? ''
+        : `<details class="confirm-raw"><summary>原始调用 agentmail_send</summary><pre>${esc(payload)}</pre></details>
+           <div class="confirm-actions">
+             <button class="btn btn-primary btn-xs" data-act="decide" data-decision="approve">批准</button>
+             <button class="btn btn-ghost btn-xs" data-act="decide" data-decision="reject">拒绝</button>
+             <span class="confirm-hint">批准后没有 Vault 写入，不产生快照</span>
+           </div>`
+    }
+  </div>`
+}
+
+/* ── 主工作区四个面板 ── */
+function renderNote() {
+  const canUndo = state.snapshots.some((s) => !s.reverted)
+  return `<div class="pane-body ws-note-pane">
+    <div class="note-head">
+      <span class="path">${esc(state.note.path)}</span>
+      <span class="badge">${esc(state.note.rev)}</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary btn-xs" data-act="organize">整理这篇笔记</button>
+      <button class="btn btn-xs" data-act="undo-latest" ${canUndo ? '' : 'disabled'}>撤销上一步</button>
+    </div>
+    <p class="ssub">写入 Vault 不需要先弹确认框 —— 每次操作落一个 Git 快照，事后一键撤销。下面这块就是 Markdown 真源本身。</p>
+    <div class="source" style="margin-top:12px">
+      <div class="source-bar">
+        <span>Vault · 唯一真源</span><span>·</span><span>${state.note.content.split('\n').length} 行</span>
+        <span class="spacer"></span>
+        <span>${esc(state.note.content.length)} 字节</span>
+      </div>
+      <div class="source-body">${noteLines(state.note.content)}</div>
+    </div>
+  </div>`
+}
+
+function visibleCollect() {
+  return state.collectItems.filter((item) => {
+    if (ui.status !== 'all' && item.status !== ui.status) return false
+    if (ui.category !== 'all' && (item.category || '未分类') !== ui.category) return false
+    return true
+  })
+}
+
+/** Falls back to the first visible row when the selection was filtered away. */
+function selectedCollectId() {
+  const visible = visibleCollect()
+  return visible.some((item) => item.id === ui.selected) ? ui.selected : (visible[0] || {}).id
+}
+
+function collectList() {
+  const items = visibleCollect()
+  const selected = selectedCollectId()
+  if (!items.length) {
+    return '<div class="empty"><strong>没有匹配的条目</strong><span>换个分类或状态试试。</span></div>'
+  }
+  if (ui.view === 'cards') {
+    return `<div class="cards">${items
+      .map((item) => {
+        const text =
+          item.status === 'failed'
+            ? item.error
+            : item.status === 'processing'
+              ? item.progress
+              : item.summary
+        return `<button class="entry-card" data-act="collect-select" data-id="${item.id}"
+          aria-pressed="${selected === item.id}">
+          <span class="card-top"><span class="entry-mark ${item.kind}">${item.kind === 'video' ? '视频' : '网页'}</span>
+            <span class="status-pill ${item.status}">${STATUS_LABELS[item.status]}</span></span>
+          <span class="entry-title" style="white-space:normal">${esc(item.title)}</span>
+          <span class="card-excerpt ${item.status}">${esc(text || '')}</span>
+          <span class="entry-sub">${esc(item.origin)} · ${esc(item.addedAt)}</span>
+        </button>`
+      })
+      .join('')}</div>`
+  }
+  return `<div class="list-scroll">${items
+    .map(
+      (item) => `<button class="entry" data-act="collect-select" data-id="${item.id}"
+        aria-pressed="${selected === item.id}">
+        <span class="entry-mark ${item.kind}">${item.kind === 'video' ? '视频' : '网页'}</span>
+        <span class="entry-copy">
+          <span class="entry-title">${esc(item.title)}</span>
+          <span class="entry-sub">${esc(item.origin)} · ${esc(item.addedAt)} · ${esc(item.category || '未分类')}</span>
+        </span>
+        <span class="status-pill ${item.status}">${STATUS_LABELS[item.status]}</span>
+      </button>`
+    )
+    .join('')}</div>`
+}
+
+function collectDetail() {
+  // The detail panel follows the filter: fall back to the first visible row when
+  // the current selection has been filtered out, so the panel never shows an
+  // item that is absent from the list beside it.
+  const visible = visibleCollect()
+  const item = visible.find((entry) => entry.id === ui.selected) || visible[0]
+  if (!item) {
+    return '<div class="empty"><strong>没有匹配的条目</strong><span>换个分类或状态试试。</span></div>'
+  }
+  const sourceTag = item.sourceHost === 'astrbot-qq' ? '手机 QQ（AstrBot）投递' : 'Obsidian 面板投递'
+  let body
+  if (item.status === 'failed') {
+    body = `<div class="detail-sec"><div class="error-box"><strong>没有生成摘要</strong>${esc(item.error)}</div>
+      <div class="channel-actions" style="margin-top:8px">
+        <button class="btn btn-xs" data-act="collect-retry" data-id="${item.id}">重试提取</button>
+      </div></div>`
+  } else if (item.status === 'processing') {
+    body = `<div class="detail-sec"><div class="error-box" style="border-left-color:var(--warn);background:rgba(217,164,65,.08)">
+      <strong>正在处理</strong>${esc(item.progress || '等待采集扩展取素材。')}</div>
+      <div class="channel-actions" style="margin-top:8px">
+        <button class="btn btn-primary btn-xs" data-act="collect-finish" data-id="${item.id}">完成入库（推进这一步）</button>
+      </div></div>`
+  } else {
+    body = `<div class="detail-sec"><h4>摘要笔记</h4><p>${esc(item.summary)}</p></div>
+      <div class="detail-sec"><h4>内容要点</h4><ul>${(item.points || [])
+        .map((point) => `<li>${esc(point)}</li>`)
+        .join('')}</ul></div>
+      <div class="detail-sec"><h4>落库路径</h4><p class="mono" style="font-size:11.5px;color:var(--muted)">${esc(item.notePath || '')}</p></div>`
+  }
+  return `<div class="detail-source">
+      <span class="entry-mark ${item.kind}">${item.kind === 'video' ? '视频' : '网页'}</span>
+      <span>${esc(item.origin)}</span><span>·</span><span>${esc(sourceTag)}</span>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost btn-xs" data-act="collect-close" title="关闭详情">×</button>
+    </div>
+    <h2 class="detail-title">${esc(item.title)}</h2>
+    <a class="detail-url" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.url)} ↗</a>
+    <div class="detail-sec"><h4>状态</h4><p>${STATUS_LABELS[item.status]} · ${esc(item.category || '未分类')} · 来自 ${esc(item.sourceHost)}</p></div>
+    ${body}`
+}
+
+function renderCollect() {
+  const categories = collectCategories(state)
+  const total = state.collectItems.length
+  const byStatus = (status) => state.collectItems.filter((item) => item.status === status).length
+  const sideSection = (glyph, key, name, count) =>
+    `<button class="side-link" data-act="collect-status" data-status="${key}"
+      aria-current="${ui.status === key && ui.category === 'all'}">
+      <span class="glyph">${glyph}</span>${esc(name)}<span class="count">${count}</span></button>`
+  const shown = visibleCollect().length
+  return `<div class="collect">
+    <div class="collect-side">
+      <div class="side-group">
+        <div class="side-heading">采集</div>
+        ${sideSection('▤', 'all', '全部条目', total)}
+        ${sideSection('◷', 'processing', '处理中', byStatus('processing'))}
+        ${sideSection('!', 'failed', '需处理', byStatus('failed'))}
+        ${sideSection('✓', 'done', '已完成', byStatus('done'))}
+      </div>
+      <div class="side-group">
+        <div class="side-heading">分类</div>
+        <button class="side-link" data-act="collect-category" data-category="all"
+          aria-current="${ui.category === 'all'}"><span class="glyph">◌</span>所有分类<span class="count">${total}</span></button>
+        ${categories
+          .map(
+            (category) => `<button class="side-link" data-act="collect-category" data-category="${esc(category.name)}"
+            aria-current="${ui.category === category.name}"><span class="glyph">•</span>${esc(category.name)}
+            <span class="count">${category.count}</span></button>`
+          )
+          .join('')}
+      </div>
+      <div class="side-group">
+        <div class="side-heading">来源</div>
+        <div class="bar-legend" style="padding:0 8px">
+          <span><i class="swatch" style="background:#e79bb3"></i>B 站视频</span>
+          <span><i class="swatch" style="background:var(--faint)"></i>网页</span>
+        </div>
+      </div>
+    </div>
+    <div class="collect-mid">
+      <form class="capture" id="captureForm">
+        <input id="captureUrl" type="url" required placeholder="粘贴 B 站视频或网页链接，回车采集"
+          aria-label="粘贴链接" value="">
+        <button class="btn btn-primary btn-xs" type="submit">采集</button>
+      </form>
+      <div class="list-tools">
+        <span style="font-size:11.5px;color:var(--faint)">${ui.category === 'all' ? '全部' : esc(ui.category)}${
+          ui.status === 'all' ? '' : ` · ${STATUS_LABELS[ui.status]}`
+        } · ${shown} 条</span>
+        <span class="spacer"></span>
+        <div class="seg" role="group" aria-label="浏览布局">
+          <button data-act="collect-view" data-view="list" aria-pressed="${ui.view === 'list'}">列表</button>
+          <button data-act="collect-view" data-view="cards" aria-pressed="${ui.view === 'cards'}">卡片</button>
+        </div>
+      </div>
+      ${collectList()}
+    </div>
+    <div class="collect-detail open" id="collectDetail">${collectDetail()}</div>
+  </div>`
+}
+
+function renderTasks() {
+  const columns = ['todo', 'doing', 'done']
+  const board = columns
+    .map((status) => {
+      const tasks = state.tasks.filter((task) => task.status === status)
+      return `<div class="col">
+        <div class="col-head"><span>${TASK_LABELS[status]}</span><span class="n">${tasks.length}</span></div>
+        ${tasks
+          .map((task) => {
+            const move = columns
+              .filter((column) => column !== status)
+              .map(
+                (column) => `<button class="btn btn-xs btn-ghost" data-act="task-move" data-id="${task.id}"
+                  data-status="${column}" title="移到${TASK_LABELS[column]}">→ ${TASK_LABELS[column]}</button>`
+              )
+              .join('')
+            return `<div class="task ${task.status}">
+              <span class="task-title">${esc(task.title)}</span>
+              <div class="task-meta">
+                ${task.dueToday ? '<span class="due">今日到期</span>' : ''}
+                <span class="badge ${SOURCE_CLASS(task.source)}">${esc(task.source)}</span>
+                <span class="task-move">${move}</span>
+              </div>
+            </div>`
+          })
+          .join('') || '<div class="empty" style="padding:18px 6px">空列</div>'}
+      </div>`
+    })
+    .join('')
+  return `<div class="board">${board}</div>
+    <div class="ctx-preview">
+      <h4>插件注入的 context.md 预览 · 今日到期</h4>
+      <pre>${esc(taskContextPreview(state))}</pre>
+    </div>
+    <p class="ssub" style="padding:0 14px 20px">点按钮换列即写 Vault：免确认、一条快照，撤销后整块看板回退。上面这段就是插件在会话开始时注入的上下文，只列未完成且今日到期的项。</p>`
+}
+
+function renderChannels() {
+  const cards = ARK_CHANNELS.map((channel) => {
+    const confirmed = state.memories.filter(
+      (m) => m.status === 'confirmed' && m.via === channel.host
+    ).length
+    const pendingHere =
+      state.pendingAction && state.pendingAction.status === 'pending' && channel.host === 'agentmail'
+    const actions = channel.actions
+      .map(
+        (action) => `<button class="btn btn-xs" data-act="channel-action" data-host="${channel.host}"
+          data-channel-action="${action.id}">${esc(action.label)}</button>`
+      )
+      .join('')
+    return `<div class="channel">
+      <div class="channel-top">
+        <span class="channel-name">${esc(channel.name)}</span>
+        <span class="grade ${channel.grade === 'verified' ? 'verified' : 'mcp'}">${esc(channel.gradeLabel)}</span>
+      </div>
+      <p class="channel-detail">${esc(channel.detail)}</p>
+      <div class="channel-actions">${actions}</div>
+      <div class="channel-state">
+        <span>${channel.host}</span><span>·</span>
+        <span>${confirmed} 条已确认记忆经此通道</span>
+        ${pendingHere ? '<span class="spacer"></span><span style="color:var(--warn)">待确认外发</span>' : ''}
+        ${channel.grade === 'mcp-extension' ? '<span class="spacer"></span><span style="color:var(--warn)">未实机验收</span>' : ''}
+      </div>
+    </div>`
+  }).join('')
+
+  const conflicts = state.thread.pendingConflicts.length
+    ? state.thread.pendingConflicts
+        .map(
+          (conflict) => `<div class="conflict">
+            <div class="cf-head">.pending · ${esc(conflict.host)}</div>
+            <span>base_rev ${esc(conflict.baseRev)} 已过期，本次保存没有覆盖线程。</span>
+            <span style="color:var(--muted)">待合并内容：${esc(conflict.incomingSummary)}</span>
+          </div>`
+        )
+        .join('')
+    : '<p class="ssub" style="margin-top:6px">没有待合并的过期写入。</p>'
+
+  return `<div class="channels">${cards}</div>
+    <div class="thread-card card">
+      <h4>Live State · ark/threads/${esc(state.thread.slug)}.md</h4>
+      <div class="kv"><span class="mono">rev</span><span class="mono">${esc(state.thread.rev)}</span>
+        <span class="spacer"></span><span>updated_by ${esc(state.thread.updatedBy)}</span></div>
+      <p class="ssub" style="margin:6px 0 8px">${esc(state.thread.summary)}</p>
+      <div class="channel-actions">
+        <button class="btn btn-xs" data-act="save-thread" data-host="obsidian" data-base="current">Obsidian 保存（base_rev 最新）</button>
+        <button class="btn btn-xs" data-act="save-thread" data-host="claude-code" data-base="stale">Claude Code 保存（base_rev 过期）</button>
+      </div>
+      ${conflicts}
+    </div>
+    <p class="ssub" style="padding:0 14px 20px">同一份 Live State 只有一个 rev。过期 base_rev 的保存不会「后写覆盖」，而是落进 <span class="mono">.pending/</span> 等用户合并 —— 上面这排按钮就是验证这一点的地方。</p>`
+}
+
+function renderWorkspace() {
+  $('#wsTabs').innerHTML = tabBar(WORKSPACE_LABELS, state.workspaceTab, 'ws')
+  $('#wsPane').innerHTML =
+    state.workspaceTab === 'note'
+      ? renderNote()
+      : state.workspaceTab === 'collect'
+        ? renderCollect()
+        : state.workspaceTab === 'tasks'
+          ? renderTasks()
+          : renderChannels()
+}
+
+/* ── 右侧边栏四个面板 ── */
+function renderChat() {
+  const messages = state.chat
+    .map((message) => {
+      if (message.role === 'user') {
+        return `<div class="msg msg-user"><div class="bubble">${esc(message.text)}</div>
+          <div class="msg-meta"><span>${messageTime(message.at)}</span></div></div>`
+      }
+      if (message.role === 'system') {
+        return `<div class="msg msg-system"><div class="bubble">${esc(message.text)}</div>
+          <div class="msg-meta"><span>${messageTime(message.at)}</span></div></div>`
+      }
+      return `<div class="msg msg-agent">${traceBlock(message)}
+        <div class="bubble">${esc(message.text)}</div>
+        <div class="msg-meta"><span>${messageTime(message.at)}</span></div></div>`
+    })
+    .join('')
+  const pending = pendingCard()
+  const withPending = pending ? `${messages}<div class="msg msg-agent">${pending}</div>` : messages
+
+  return `<div class="ctx-bar">
+      <span class="ctx-note" title="${esc(state.note.path)}">${esc(state.note.path)}</span>
+      <div class="ctx-actions">
+        <button class="btn btn-ghost btn-xs" data-act="chat-action" data-chat="summarize">总结</button>
+        <button class="btn btn-ghost btn-xs" data-act="organize">整理</button>
+        <button class="btn btn-ghost btn-xs" data-act="chat-action" data-chat="ask">询问</button>
+      </div>
+    </div>
+    <div class="messages">${withPending}</div>`
+}
+
+function renderHistory() {
+  const filters = ['all', 'ark(ark-agent)', 'ark(astrbot)', 'plugin:collect', 'ark(obsidian)']
+  const chips = filters
+    .map(
+      (source) => `<button class="chip" data-act="history-filter" data-source="${esc(source)}"
+        aria-pressed="${ui.historyFilter === source}">${source === 'all' ? '全部' : esc(source)}</button>`
+    )
+    .join('')
+  const newest = [...state.snapshots].reverse().find((snapshot) => !snapshot.reverted)
+  const rows = state.snapshots
+    .filter((snapshot) => ui.historyFilter === 'all' || snapshot.source === ui.historyFilter)
+    .slice()
+    .reverse()
+    .map((snapshot) => {
+      const canUndo = newest && newest.commit === snapshot.commit && !snapshot.reverted
+      return `<div class="tl-row ${snapshot.reverted ? 'reverted' : ''}">
+        <span class="tl-dot"></span>
+        <div class="tl-main">
+          <div class="tl-top">
+            <span class="badge ${SOURCE_CLASS(snapshot.source)}">${esc(snapshot.source)}</span>
+            <span class="tl-summary">${esc(snapshot.message)}</span>
+            <span class="tl-time">${messageTime(snapshot.at)}</span>
+          </div>
+          ${diffBlock(snapshot.diff)}
+          <div class="tl-top">
+            <span class="mono" style="font-size:10.5px;color:var(--faint)">${esc(snapshot.commit)}</span>
+            <span class="badge ${snapshot.reverted ? 'undone' : ''}">${snapshot.reverted ? '已撤销' : '可撤销'}</span>
+            <span class="spacer"></span>
+            ${
+              canUndo
+                ? `<button class="btn btn-xs" data-act="undo" data-commit="${esc(snapshot.commit)}">一键撤销</button>`
+                : snapshot.reverted
+                  ? '<span style="font-size:10.5px;color:var(--faint)">这条已撤销，历史保留</span>'
+                  : '<span style="font-size:10.5px;color:var(--faint)">被更新的快照盖住，需先撤新的</span>'
+            }
+          </div>
+        </div>
+      </div>`
+    })
+    .join('')
+  return `<div class="filter-chips">${chips}</div>
+    <div class="timeline">${
+      rows ||
+      '<div class="empty"><strong>还没有快照</strong><span>整理笔记、完成任务或采集入库都会各落一条。</span></div>'
+    }</div>`
+}
+
+function renderMemory() {
+  const inferred = state.memories.filter((memory) => memory.status === 'inferred')
+  const confirmed = state.memories.filter((memory) => memory.status === 'confirmed')
+  const resident = residentPreview(state)
+  const downgradeHosts = [...new Set(confirmed.map((memory) => memory.via))]
+
+  const memCard = (memory) => {
+    const isInferred = memory.status === 'inferred'
+    return `<div class="mem ${memory.status}">
+      <div class="mem-accent"></div>
+      <div class="mem-inner">
+        <div class="mem-top">
+          <span class="pill ${isInferred ? 'inf' : 'conf'}">${isInferred ? 'inferred' : 'confirmed'}</span>
+          <span>${esc(memory.kind)} · ${esc(memory.at)}</span>
+          <span class="spacer"></span>
+          <span class="mono" style="font-size:10px">via ${esc(memory.via)}</span>
+        </div>
+        <div class="mem-text ${isInferred ? 'mem-inferred-text' : ''}">${esc(memoryDisplay(memory))}</div>
+        <div class="mem-quote">${esc(memory.quote)}</div>
+        <div class="mem-actions">
+          ${
+            isInferred
+              ? `<button class="btn btn-primary btn-xs" data-act="confirm-memory" data-id="${memory.id}">确认升入常驻层</button>
+                 <span style="font-size:10.5px;color:var(--faint)">不计入 2k 常驻预览</span>`
+              : `<button class="btn btn-xs" data-act="downgrade" data-host="${memory.via}">按 via=${esc(memory.via)} 一键降级</button>`
+          }
+        </div>
+      </div>
+    </div>`
+  }
+
+  return `<div class="downgrade-row">
+      <span>按通道批量降级：</span>
+      ${
+        downgradeHosts.length
+          ? downgradeHosts
+              .map(
+                (host) =>
+                  `<button class="btn btn-xs" data-act="downgrade" data-host="${host}">${esc(host)}</button>`
+              )
+              .join('')
+          : '<span style="color:var(--faint)">当前没有已确认条目</span>'
+      }
+      <span class="spacer"></span>
+      <span>常驻层 <span class="num">${resident.tokens}</span> / <span class="num">${resident.limit}</span> tok</span>
+    </div>
+    <div class="mem-group">
+      <h4>推断 · ${inferred.length} 条（不进常驻层）</h4>
+      ${inferred.map(memCard).join('') || '<div class="empty" style="padding:16px">没有待确认的推断条目</div>'}
+    </div>
+    <div class="mem-group" style="padding-bottom:22px">
+      <h4>已确认 · ${confirmed.length} 条（计入 2k 常驻层）</h4>
+      ${confirmed.map(memCard).join('') || '<div class="empty" style="padding:16px">常驻层还没有条目</div>'}
+    </div>`
+}
+
+function renderSettings() {
+  const resident = residentPreview(state)
+  const onDemandUsed = Math.min(
+    ARK_BUDGET.onDemand,
+    resident.parts.reduce((sum, part) => sum + part.tokens, 0) + 320
+  )
+  const onDemandPct = Math.round((onDemandUsed / ARK_BUDGET.onDemand) * 100)
+  const swatches = ['var(--accent)', '#4f93d6', 'var(--ok)']
+  const legend = resident.parts
+    .map(
+      (part, index) =>
+        `<span><i class="swatch" style="background:${swatches[index]}"></i>${esc(part.label)} ${part.tokens}</span>`
+    )
+    .join('')
+  const segments = resident.parts
+    .map(
+      (part) =>
+        `<i style="width:${Math.max(2, Math.round((part.tokens / resident.limit) * 100))}%"></i>`
+    )
+    .join('')
+
+  return `<div class="settings">
+    <div class="card">
+      <div class="kv"><h4 style="margin:0;font-size:12px">ark serve</h4><span class="badge host">运行中</span>
+        <span class="spacer"></span><span class="num" style="font-size:10.5px">pid 7852</span></div>
+      <div class="kv"><span class="mono" style="font-size:11.5px">http://127.0.0.1:8650</span></div>
+      <div class="kv"><span>单进程同时暴露两个协议面</span></div>
+      <div class="kv"><span class="mono" style="font-size:11px">/mcp</span><span>MCP Streamable HTTP：Core 工具 + 插件工具</span></div>
+      <div class="kv"><span class="mono" style="font-size:11px">/v1</span><span>OpenAI 兼容 SSE + 动作确认 + 插件界面接口</span></div>
+    </div>
+    <div class="card">
+      <h4>上下文预算 · 两层</h4>
+      <div class="budget">
+        <div class="kv"><span>常驻层（会话开始装配）</span><span class="spacer"></span>
+          <span class="num">${resident.tokens} / ${resident.limit} tok</span></div>
+        <div class="bar" role="img" aria-label="常驻层已用">${segments}</div>
+        <div class="bar-legend">${legend}</div>
+      </div>
+      <div class="budget">
+        <div class="kv"><span>按需层（recall / search）</span><span class="spacer"></span>
+          <span class="num">${onDemandUsed} / ${ARK_BUDGET.onDemand} tok</span></div>
+        <div class="bar" role="img" aria-label="按需层已用，约 ${onDemandPct}%">
+          <i style="width:${Math.round(onDemandPct * 0.5)}%"></i><i style="width:${Math.round(onDemandPct * 0.5)}%"></i>
+        </div>
+        <div class="bar-legend"><span>记忆与笔记各占一半，用不满的让给另一边</span></div>
+      </div>
+      <p class="ssub">推断条目永远不进常驻层 —— 不是「预算还有空就塞进去」，而是结构上就不在候选里。</p>
+    </div>
+    <div class="card">
+      <div class="kv"><span>快照</span><span class="spacer"></span>
+        <span class="num">${state.snapshots.length}</span><span style="color:var(--faint)">条</span></div>
+      <div class="kv"><span>其中已撤销</span><span class="spacer"></span>
+        <span class="num">${state.snapshots.filter((s) => s.reverted).length}</span></div>
+      <div class="kv"><span>AgentMail 已发出</span><span class="spacer"></span>
+        <span class="num">${state.mail.sentCount}</span><span style="color:var(--faint)">封</span></div>
+      <div class="kv"><span>待确认外部动作</span><span class="spacer"></span>
+        <span class="num">${state.pendingAction && state.pendingAction.status === 'pending' ? 1 : 0}</span></div>
+      <div class="kv"><span>待合并的过期写入</span><span class="spacer"></span>
+        <span class="num">${state.thread.pendingConflicts.length}</span></div>
+    </div>
+    <div class="card">
+      <h4>观测</h4>
+      <div class="kv"><span>[core] trace</span><span class="spacer"></span><span class="mono">summary</span></div>
+      <div class="kv"><span>轨迹落盘</span><span class="spacer"></span><span class="mono" style="font-size:11px">.ark/traces/&lt;日期&gt;/&lt;turn_id&gt;.json</span></div>
+      <div class="kv"><span>门禁</span><span class="spacer"></span><span class="mono" style="font-size:11px">evals/gate.py</span></div>
+    </div>
+  </div>`
+}
+
+function renderSidebar() {
+  $('#sideTabs').innerHTML = tabBar(SIDEBAR_LABELS, state.sidebarTab, 'side')
+  $('#sidePane').innerHTML =
+    state.sidebarTab === 'chat'
+      ? renderChat()
+      : state.sidebarTab === 'history'
+        ? renderHistory()
+        : state.sidebarTab === 'memory'
+          ? renderMemory()
+          : renderSettings()
+}
+
+function renderScenarioBar() {
+  $('#scenarioBar').innerHTML = ARK_SCENARIO_META.map(
+    (meta) => `<button class="scenario" data-act="scenario" data-id="${meta.id}"
+      aria-pressed="${state.scenario === meta.id}" title="${esc(meta.summary)}">
+      <strong>${esc(meta.label)}</strong><span>${meta.steps} 步 · ${esc(meta.summary)}</span></button>`
+  ).join('')
+}
+
+function render() {
+  document.documentElement.dataset.theme = ui.theme
+  renderScenarioBar()
+  renderWorkspace()
+  renderSidebar()
+}
+
+/* ── 事件：全部走 dispatch ── */
+function apply(action, note) {
+  const before = new Set(state.collectItems.map((item) => item.id))
+  const next = dispatch(state, action)
+  const changed = next !== state
+  state = next
+  // A freshly submitted link lands selected and unfiltered, so the very next
+  // click is the one that advances it — that keeps each scenario inside six
+  // clicks. Detected by id, not by action type: a channel card reaches dispatch
+  // through `run-channel-action`, which forwards to `collect-submit`.
+  const fresh = state.collectItems.find((item) => !before.has(item.id))
+  if (fresh) {
+    ui.selected = fresh.id
+    ui.status = 'all'
+    ui.category = 'all'
+  }
+  render()
+  if (changed && note) toast(note)
+  return changed
+}
+
+const ACTIONS = {
+  'ws-tab': (el) => apply({ type: 'set-workspace-tab', tab: el.dataset.tab }),
+  'side-tab': (el) => apply({ type: 'set-sidebar-tab', tab: el.dataset.tab }),
+  theme: () => {
+    ui.theme = ui.theme === 'dark' ? 'light' : 'dark'
+    persistTheme()
+    applyTheme()
+    render()
+  },
+  reset: () => {
+    state = dispatch(state, { type: 'reset' })
+    ui = { view: 'list', status: 'all', category: 'all', selected: 'c1', historyFilter: 'all', theme: ui.theme }
+    render()
+    toast('已回到初始预设状态')
+  },
+  scenario: (el) => {
+    state = dispatch(state, { type: 'run-scenario', scenario: el.dataset.id })
+    ui.status = 'all'
+    ui.category = 'all'
+    ui.selected = state.collectItems.length
+      ? state.collectItems[state.collectItems.length - 1].id
+      : ''
+    render()
+    toast(`剧本已载入：${el.querySelector('strong').textContent}`)
+  },
+  organize: () => apply({ type: 'organize-note' }, '已写入 1 个快照 —— 写入前不需要确认'),
+  'undo-latest': () => apply({ type: 'undo-latest' }, '已撤销上一条快照'),
+  undo: (el) => apply({ type: 'undo-snapshot', commit: el.dataset.commit }, '原文已精确复原'),
+  'collect-view': (el) => {
+    ui.view = el.dataset.view
+    render()
+  },
+  'collect-status': (el) => {
+    ui.status = el.dataset.status
+    ui.category = 'all'
+    render()
+  },
+  'collect-category': (el) => {
+    ui.category = el.dataset.category
+    ui.status = 'all'
+    render()
+  },
+  'collect-select': (el) => {
+    ui.selected = el.dataset.id
+    render()
+  },
+  'collect-close': () => {
+    const panel = $('#collectDetail')
+    if (panel) panel.classList.remove('open')
+  },
+  'collect-finish': (el) =>
+    apply({ type: 'collect-finish', id: el.dataset.id }, '已入库：摘要笔记落在 Vault 里'),
+  'collect-retry': (el) => apply({ type: 'collect-retry', id: el.dataset.id }, '重试任务已入队'),
+  'task-move': (el) =>
+    apply(
+      { type: 'move-task', id: el.dataset.id, status: el.dataset.status },
+      '看板已更新，并落一条快照'
+    ),
+  'channel-action': (el) =>
+    apply({
+      type: 'run-channel-action',
+      host: el.dataset.host,
+      action: el.dataset.channelAction
+    }),
+  decide: (el) =>
+    apply(
+      { type: 'resolve-pending-action', decision: el.dataset.decision },
+      el.dataset.decision === 'approve' ? '已批准：邮件发出' : '已拒绝：没有任何外部副作用'
+    ),
+  'confirm-memory': (el) =>
+    apply({ type: 'confirm-memory', id: el.dataset.id }, '记忆已确认，进入 2k 常驻层'),
+  downgrade: (el) =>
+    apply({ type: 'downgrade-by-channel', host: el.dataset.host }, `已按通道 ${el.dataset.host} 降级`),
+  'save-thread': (el) => {
+    const stale = el.dataset.base === 'stale'
+    apply(
+      {
+        type: 'save-thread',
+        host: el.dataset.host,
+        baseRev: stale ? STALE_BASE_REV : CURRENT_REV,
+        summary: stale
+          ? '终端这边的结论：只做两栏就够。'
+          : '桌面端接上：先把 note 与 collect 两栏做实，再谈渠道。'
+      },
+      stale ? 'base_rev 已过期，这次保存进入 .pending 待合并' : 'Live State 已推进到新 rev'
+    )
+  },
+  'history-filter': (el) => {
+    ui.historyFilter = el.dataset.source
+    render()
+  },
+  'chat-action': (el) => {
+    const kind = el.dataset.chat
+    apply(
+      {
+        type: 'run-channel-action',
+        host: 'obsidian',
+        action: kind === 'summarize' ? 'recall-memory' : 'list-tasks'
+      },
+      kind === 'summarize' ? '已按当前笔记召回记忆' : '已查一次任务'
+    )
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-act]')
+  if (!trigger) return
+  const handler = ACTIONS[trigger.dataset.act]
+  if (handler) handler(trigger)
+})
+
+document.addEventListener('submit', (event) => {
+  if (event.target.id !== 'captureForm') return
+  event.preventDefault()
+  const input = $('#captureUrl')
+  const url = input.value.trim()
+  if (!url) return
+  try {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('只接受 http 或 https 链接')
+  } catch (error) {
+    toast(error.message || '链接格式不对')
+    return
+  }
+  const before = state.collectItems.length
+  apply({ type: 'collect-submit', url, host: 'obsidian' })
+  if (state.collectItems.length > before) {
+    input.value = ''
+    $('#captureUrl') && $('#captureUrl').focus()
+    toast('已进采集队列 —— 点详情里的「完成入库」推进这一步')
+  }
+})
+
+ui.theme = readTheme()
+applyTheme()
+render()
+</script>
+</body>
+</html>

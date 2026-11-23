@@ -248,8 +248,9 @@ describe('ark workbench v2 content contract', () => {
     const hrefs = (ark?.links ?? []).map((link) => link.href)
     expect(hrefs).toContain('/diagrams/ark-architecture.html')
     expect(hrefs.some((href) => href.includes('obsidian-ark-agent'))).toBe(false)
-    // T05 owns the interactive demo; this ticket must not sneak one in.
-    expect(hrefs.some((href) => href.includes('/demo'))).toBe(false)
+    // The interactive demo is T05's deliverable; this ticket only reserved the
+    // slot. See the dedicated demo test below.
+    expect(hrefs).toContain('/projects/ark-workbench/demo/')
   })
 
   test('publishes exactly the four v2 deep dives, ordered 1..4, each with its own metadata', () => {
@@ -402,6 +403,29 @@ describe('ark workbench v2 content contract', () => {
     for (const source of arkSources) {
       expect(source).not.toMatch(/ark-operation-ledger|ark-memory-governance|ark-response-sequence/)
     }
+  })
+
+  /**
+   * T05: the interactive demo is a static page under `public/`, reached by the
+   * directory form `/projects/ark-workbench/demo/` — `trailingSlash: 'never'`
+   * governs Astro routes, not static assets.
+   */
+  test('the overview links the interactive demo, and that link resolves to a real page', () => {
+    const entries = loadProjectCollection(CONTENT_DIRS.projects)
+    const ark = buildProjectCards(entries, { isProd: true }).find(
+      (card) => card.slug === 'ark-workbench'
+    )
+    const demo = (ark?.links ?? []).find((link) => link.href === '/projects/ark-workbench/demo/')
+
+    expect(demo).toBeDefined()
+    expect(demo?.label).toContain('交互演示')
+    expect(isExternalProjectLink(demo!.href)).toBe(false)
+
+    const demoPage = resolve('public/projects/ark-workbench/demo/index.html')
+    expect(existsSync(demoPage)).toBe(true)
+
+    // The overview body names the demo too, so a reader who scrolls finds it.
+    expect(bodyOf(`${ARK_DIR}/index.md`)).toContain('/projects/ark-workbench/demo/')
   })
 })
 
